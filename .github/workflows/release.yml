@@ -34,12 +34,8 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             mkdir -p keystore
             echo "$KEYSTORE_BASE64" | base64 -d > keystore/release.jks
-            cat > keystore.properties <<EOF
-            storeFile=keystore/release.jks
-            storePassword=$KEYSTORE_PASSWORD
-            keyAlias=betterheybox
-            keyPassword=$KEYSTORE_PASSWORD
-            EOF
+            printf 'storeFile=keystore/release.jks\nstorePassword=%s\nkeyAlias=betterheybox\nkeyPassword=%s\n' \
+              "$KEYSTORE_PASSWORD" "$KEYSTORE_PASSWORD" > keystore.properties
           else
             echo "No KEYSTORE_BASE64 secret - building unsigned APK"
           fi
