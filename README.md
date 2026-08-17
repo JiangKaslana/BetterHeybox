@@ -3,7 +3,7 @@
 增强小黑盒（Heybox）的 LSPosed 模块。
 
 ## Note
-本应用基于 [小黑盒 1.3.393](./HeyboxDownload/1.3.393.apk) 完成，低于此版本出现的问题不会进行处理
+本应用基于 [小黑盒 1.3.393](https://github.com/Mrmiaomrzh/BetterHeybox/releases/download/v0.2.0/heybox_1.3.393.apk) 完成，低于此版本出现的问题不会进行处理
 
 ## 功能
 
