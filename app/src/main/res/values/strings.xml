@@ -21,8 +21,8 @@
     <string name="section_general">通用</string>
     <string name="block_update">屏蔽 Heybox 更新</string>
     <string name="block_update_desc">阻止版本更新提示和自动下载，默认关闭</string>
-    <!-- 版本号展示文本：发布新版本时与 gradle.properties 的 VERSION_NAME 同步更新 -->
-    <string name="version_footer">BetterHeybox v0.2.0</string>
+    <!-- %1$s 由 APK Manifest 的 versionName 提供，CI/Release 构建时自动同步 -->
+    <string name="version_footer">BetterHeybox %1$s</string>
     <string name="exit">退出</string>
     <string name="restart_dialog_title">重新启动APP生效</string>
     <string name="restart_dialog_msg">底栏改动需重启小黑盒后生效</string>

@@ -6,6 +6,7 @@
 
 ### 内嵌设置与主题
 - 小黑盒设置页入口改为直接渲染 BetterHeybox 面板，不再跳转独立设置 Activity
+- 设置界面版本号改为读取 APK Manifest，与 CI/Release 工作流构建版本自动同步
 - 修复内嵌面板因跨应用 Theme 资源混用导致的 `Resources$NotFoundException`
 - 支持小黑盒深色模式「打开 / 关闭 / 跟随系统」三态读取
 - 深色模式使用黑底白字，浅色模式使用白底黑字；切换后自动刷新入口和面板颜色

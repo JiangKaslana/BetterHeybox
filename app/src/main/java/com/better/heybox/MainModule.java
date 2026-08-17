@@ -691,6 +691,12 @@ public class MainModule extends XposedModule {
         if (title != null) {
             title.setText("BetterHeybox 设置");
         }
+        TextView versionFooter = panel.findViewById(com.better.heybox.R.id.version_footer);
+        if (versionFooter != null) {
+            Context moduleContext = versionFooter.getContext();
+            versionFooter.setText(moduleContext.getString(com.better.heybox.R.string.version_footer,
+                    VersionUtils.getVersionName(moduleContext)));
+        }
         View close = panel.findViewById(com.better.heybox.R.id.btn_exit);
         if (close != null) {
             close.setOnClickListener(v -> onClose.run());

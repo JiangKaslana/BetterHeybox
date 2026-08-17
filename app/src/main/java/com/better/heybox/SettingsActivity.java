@@ -9,6 +9,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.CompoundButton;
 import android.widget.Switch;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.lang.reflect.Method;
@@ -29,6 +30,11 @@ public class SettingsActivity extends Activity {
         setContentView(R.layout.activity_settings);
         setTitle(R.string.settings_title);
         ThemeUtils.applyFilledButton(findViewById(R.id.btn_exit), this, 24);
+        TextView versionFooter = findViewById(R.id.version_footer);
+        if (versionFooter != null) {
+            versionFooter.setText(getString(R.string.version_footer,
+                    VersionUtils.getVersionName(this)));
+        }
 
         // 广告过滤（即时生效）
         bindSwitch(R.id.switch_open_screen, App.KEY_OPEN_SCREEN, true);
