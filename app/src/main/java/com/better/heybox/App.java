@@ -1,9 +1,7 @@
 package com.better.heybox;
 
 import android.app.Application;
-import android.content.ComponentName;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 
 import io.github.libxposed.service.XposedService;
 import io.github.libxposed.service.XposedServiceHelper;
@@ -18,9 +16,6 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     /** RemotePreferences 分组名（Hook 侧用同名读取） */
     public static final String PREFS_GROUP = "betterheybox";
 
-    /** 本地 UI 状态存储（用于桌面图标组件校正，不依赖 RemotePreferences 连接） */
-    public static final String LOCAL_PREFS = "betterheybox_ui";
-
     /** 功能开关 key */
     public static final String KEY_OPEN_SCREEN = "open_screen";
     public static final String KEY_FEED_AD = "feed_ad";
@@ -32,7 +27,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     public static final String KEY_HIDE_TAB_GAME = "hide_tab_game";
     public static final String KEY_HIDE_ADD = "hide_add";
     public static final String KEY_COPY_POST = "copy_post";
-    public static final String KEY_HIDE_ICON = "hide_icon";
+    public static final String KEY_BLOCK_UPDATE = "block_update";
 
     // 框架服务实例（volatile 保证跨线程可见）
     private static volatile XposedService sService;
@@ -41,31 +36,13 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     public void onCreate() {
         super.onCreate();
         XposedServiceHelper.registerListener(this);
-        syncDesktopIconState();
-    }
-
-    /**
-     * 校正桌面图标组件状态：与本地记录保持一致。
-     * 防止「恢复图标」时残留 DISABLED（即使桌面未即时刷新，下次进程启动也会校正回 DEFAULT）。
-     */
-    private void syncDesktopIconState() {
-        try {
-            boolean hide = getSharedPreferences(LOCAL_PREFS, MODE_PRIVATE)
-                    .getBoolean(KEY_HIDE_ICON, false);
-            ComponentName cn = new ComponentName(this, "com.better.heybox.LaunchActivity");
-            getPackageManager().setComponentEnabledSetting(cn,
-                    hide
-                            ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-                            : PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
-                    PackageManager.DONT_KILL_APP);
-        } catch (Throwable t) {
-            // 校正失败不影响主流程
-        }
     }
 
     @Override
     public void onServiceBind(XposedService service) {
         sService = service;
+        PreferenceReceiver.tryFlush(this,
+                getSharedPreferences("betterheybox_pending", MODE_PRIVATE));
     }
 
     @Override

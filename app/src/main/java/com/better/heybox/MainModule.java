@@ -1,20 +1,37 @@
 package com.better.heybox;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.content.res.ColorStateList;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Bundle;
 import android.util.Log;
+import android.view.ContextThemeWrapper;
 import android.view.Gravity;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
+import android.widget.CompoundButton;
+import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.github.libxposed.api.XposedInterface;
 import io.github.libxposed.api.XposedModule;
@@ -33,7 +50,11 @@ public class MainModule extends XposedModule {
 
     private static final String TAG = "BetterHeybox";
     private static final String TARGET_PKG = "com.max.xiaoheihe";
+    private static final String TARGET_HEYBOX_VERSION = "1.3.393";
     private static final String ENTRY_TAG = "betterheybox_entry";
+    private static final String EMBEDDED_SETTINGS_TAG = "betterheybox_embedded_settings";
+    private static final AtomicBoolean VERSION_NOTICE_SHOWN = new AtomicBoolean(false);
+    private static volatile Boolean HOST_DARK_MODE_OVERRIDE;
 
     @Override
     public void onModuleLoaded(ModuleLoadedParam param) {
@@ -63,6 +84,9 @@ public class MainModule extends XposedModule {
     private void installHooks(PackageReadyParam param) {
         ClassLoader cl = param.getClassLoader();
 
+        hookVersionNotice(cl);
+        hookUpdateBlocking(cl);
+        hookThemeSwitch();
         hookOpenScreenAd(cl);
         hookFeedAds(cl);
         hookBubbleAndCornerAds(cl);
@@ -87,6 +111,100 @@ public class MainModule extends XposedModule {
             // 读取失败按默认值处理
         }
         return def;
+    }
+
+    // ==================== 0. 版本前置检查 / 更新屏蔽 ====================
+
+    /**
+     * Heybox 的页面基类会在主界面及其它页面恢复时回调，适合作为版本提示入口。
+     * 提示使用 Heybox 自带的底部提示栏，避免引入额外 UI 依赖。
+     */
+    private void hookVersionNotice(ClassLoader cl) {
+        try {
+            Class<?> baseActivity = Class.forName(
+                    "com.max.hbcommon.base.BaseActivity", false, cl);
+            Method onResume = baseActivity.getDeclaredMethod("onResume");
+            hook(onResume).intercept(chain -> {
+                Object result = chain.proceed();
+                Object self = chain.getThisObject();
+                if (self instanceof Activity) {
+                    Activity activity = (Activity) self;
+                    View decor = activity.getWindow().getDecorView();
+                    decor.postDelayed(() -> {
+                        syncHostDarkModeFromContext(activity);
+                        showVersionNotice(activity, cl);
+                        refreshSettingsThemeIfOpen(activity);
+                    }, 600L);
+                }
+                return result;
+            });
+            log(Log.INFO, TAG, "✔ Heybox 版本检测 Hook 已安装");
+        } catch (Throwable t) {
+            log(Log.ERROR, TAG, "✘ Heybox 版本检测 Hook 失败", t);
+        }
+    }
+
+    private void showVersionNotice(Activity activity, ClassLoader cl) {
+        if (activity.isFinishing() || VERSION_NOTICE_SHOWN.get()) {
+            return;
+        }
+        String version = "unknown";
+        try {
+            PackageInfo info = activity.getPackageManager().getPackageInfo(TARGET_PKG, 0);
+            if (info.versionName != null) {
+                version = info.versionName;
+            }
+        } catch (Throwable t) {
+            log(Log.WARN, TAG, "读取 Heybox 版本失败", t);
+            return;
+        }
+        if (TARGET_HEYBOX_VERSION.equals(version)
+                || !VERSION_NOTICE_SHOWN.compareAndSet(false, true)) {
+            return;
+        }
+
+        String message = "BetterHeybox 目标版本为 Heybox " + TARGET_HEYBOX_VERSION
+                + "，当前检测到 " + version;
+        try {
+            Class<?> toastUtil = Class.forName("com.max.hbutils.utils.f", false, cl);
+            Method showBottomHint = toastUtil.getDeclaredMethod("d", String.class);
+            showBottomHint.invoke(null, message);
+        } catch (Throwable t) {
+            // 目标 Toast 工具不可用时仍保留版本提示。
+            Toast.makeText(activity.getApplicationContext(), message, Toast.LENGTH_LONG).show();
+        }
+        log(Log.WARN, TAG, message);
+    }
+
+    /** 屏蔽 AppUpdateManager 的统一更新入口，开关关闭时完全保留原行为。 */
+    private void hookUpdateBlocking(ClassLoader cl) {
+        try {
+            Class<?> manager = Class.forName(
+                    "com.max.xiaoheihe.utils.AppUpdateManager", false, cl);
+            Method updateEntry = null;
+            for (Method method : manager.getDeclaredMethods()) {
+                if ("P".equals(method.getName())
+                        && method.getParameterCount() == 1
+                        && method.getParameterTypes()[0] == Boolean.class) {
+                    updateEntry = method;
+                    break;
+                }
+            }
+            if (updateEntry == null) {
+                log(Log.WARN, TAG, "✘ 未找到 AppUpdateManager.P(Boolean)");
+                return;
+            }
+            hook(updateEntry).intercept(chain -> {
+                if (isEnabled(App.KEY_BLOCK_UPDATE, false)) {
+                    log(Log.INFO, TAG, "已屏蔽 Heybox 更新入口 AppUpdateManager.P()");
+                    return chain.getThisObject();
+                }
+                return chain.proceed();
+            });
+            log(Log.INFO, TAG, "✔ Heybox 更新屏蔽 Hook 已安装");
+        } catch (Throwable t) {
+            log(Log.ERROR, TAG, "✘ Heybox 更新屏蔽 Hook 失败", t);
+        }
     }
 
     // ==================== 1. 开屏广告 ====================
@@ -223,6 +341,123 @@ public class MainModule extends XposedModule {
 
     // ==================== 4. 设置页入口 ====================
 
+    /**
+     * 监听小黑盒通用设置中的深色模式入口。只在原点击完成后读取宿主实际背景亮度，
+     * 不替换小黑盒自己的点击监听器，避免破坏其主题切换逻辑。
+     */
+    private void hookThemeSwitch() {
+        try {
+            Method performClick = View.class.getDeclaredMethod("performClick");
+            hook(performClick).intercept(chain -> {
+                Object result = chain.proceed();
+                Object target = chain.getThisObject();
+                if (target instanceof View && isDarkModeEntry((View) target)) {
+                    View view = (View) target;
+                    view.postDelayed(() -> updateHostDarkModeFromEntry(view), 250L);
+                }
+                return result;
+            });
+            log(Log.INFO, TAG, "✔ 小黑盒深色模式开关 Hook 已安装");
+        } catch (Throwable t) {
+            log(Log.WARN, TAG, "深色模式开关 Hook 安装失败", t);
+        }
+    }
+
+    private boolean isDarkModeEntry(View view) {
+        try {
+            int id = view.getId();
+            if (id == View.NO_ID) {
+                return false;
+            }
+            return "vg_dark_mode_v2".equals(view.getResources().getResourceEntryName(id))
+                    && TARGET_PKG.equals(view.getResources().getResourcePackageName(id));
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private void updateHostDarkModeFromEntry(View entry) {
+        try {
+            Boolean value = readDarkModeEntryValue(entry);
+            if (value != null) {
+                HOST_DARK_MODE_OVERRIDE = value;
+            } else {
+                syncHostDarkModeFromContext(entry.getContext());
+            }
+            Activity activity = findActivity(entry.getContext());
+            if (activity != null) {
+                refreshSettingsThemeIfOpen(activity);
+            }
+            log(Log.INFO, TAG, "小黑盒 vg_dark_mode_v2 状态已同步: dark="
+                    + HOST_DARK_MODE_OVERRIDE);
+        } catch (Throwable t) {
+            log(Log.WARN, TAG, "同步小黑盒主题状态失败", t);
+        }
+    }
+
+    /** 在宿主 Activity 恢复后重新读取实际主题，覆盖旧 Activity 的点击状态。 */
+    private void syncHostDarkModeFromContext(Context context) {
+        int background = ThemeUtils.resolveColor(context, android.R.attr.colorBackground, 0);
+        HOST_DARK_MODE_OVERRIDE = background != 0
+                ? isDarkColor(background) : ThemeUtils.isDarkMode(context);
+    }
+
+    /** 读取 vg_dark_mode_v2 右侧状态值：打开=深色，关闭=浅色，跟随系统=读取系统 uiMode。 */
+    private Boolean readDarkModeEntryValue(View view) {
+        if (view instanceof TextView) {
+            String text = String.valueOf(((TextView) view).getText()).trim();
+            if (isDarkModeEnabledText(text)) {
+                return true;
+            }
+            if (isDarkModeDisabledText(text)) {
+                return false;
+            }
+            if (isDarkModeFollowSystemText(text)) {
+                return ThemeUtils.isDarkMode(view.getContext());
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                Boolean value = readDarkModeEntryValue(group.getChildAt(i));
+                if (value != null) {
+                    return value;
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isDarkModeEnabledText(String text) {
+        return "打开".equals(text) || "开启".equals(text) || "已打开".equals(text)
+                || "已开启".equals(text);
+    }
+
+    private boolean isDarkModeDisabledText(String text) {
+        return "关闭".equals(text) || "关".equals(text) || "已关闭".equals(text)
+                || "未开启".equals(text);
+    }
+
+    private boolean isDarkModeFollowSystemText(String text) {
+        return "跟随系统".equals(text) || "跟随系统设置".equals(text)
+                || "系统默认".equals(text);
+    }
+
+    private Activity findActivity(Context context) {
+        Context current = context;
+        while (current instanceof ContextWrapper) {
+            if (current instanceof Activity) {
+                return (Activity) current;
+            }
+            Context base = ((ContextWrapper) current).getBaseContext();
+            if (base == current) {
+                break;
+            }
+            current = base;
+        }
+        return current instanceof Activity ? (Activity) current : null;
+    }
+
     private void hookSettingsEntry(ClassLoader cl) {
         try {
             Class<?> clazz = Class.forName("com.max.xiaoheihe.module.account.GeneralSettingsActivity", false, cl);
@@ -240,6 +475,7 @@ public class MainModule extends XposedModule {
                             @Override
                             public void run() {
                                 try {
+                                    syncHostDarkModeBeforeInjection(activity);
                                     insertSettingsEntry(activity);
                                 } catch (Throwable t) {
                                     log(Log.ERROR, TAG, "插入设置入口异常", t);
@@ -258,6 +494,26 @@ public class MainModule extends XposedModule {
         }
     }
 
+    /**
+     * 在创建入口前读取当前设置页的深色模式值，避免先用旧主题注入、随后再变色造成闪烁。
+     * vg_dark_mode_v2 的文本是宿主最终显示状态，优先级高于旧 Activity 缓存和主题回调。
+     */
+    private void syncHostDarkModeBeforeInjection(Activity activity) {
+        try {
+            int id = activity.getResources().getIdentifier(
+                    "vg_dark_mode_v2", "id", TARGET_PKG);
+            View modeEntry = id != 0 ? activity.findViewById(id) : null;
+            Boolean value = modeEntry != null ? readDarkModeEntryValue(modeEntry) : null;
+            if (value != null) {
+                HOST_DARK_MODE_OVERRIDE = value;
+                return;
+            }
+        } catch (Throwable t) {
+            log(Log.DEBUG, TAG, "注入前读取深色模式状态失败，回退 Theme", t);
+        }
+        syncHostDarkModeFromContext(activity);
+    }
+
     private void insertSettingsEntry(Object activityObj) {
         if (!(activityObj instanceof Activity)) {
             return;
@@ -272,6 +528,12 @@ public class MainModule extends XposedModule {
                 return;
             }
             ViewGroup root = (ViewGroup) rootView;
+
+            // 宿主可能在滚动/重绘时再次调用 G1；已有入口或展开面板时不要重复创建。
+            if (root.findViewWithTag(EMBEDDED_SETTINGS_TAG) != null
+                    || root.findViewWithTag(ENTRY_TAG) != null) {
+                return;
+            }
 
             // 1. 清理旧入口（root 直接子中的）
             removeOldEntry(root);
@@ -292,17 +554,21 @@ public class MainModule extends XposedModule {
             }
 
             // 3. 构建 BetterHeybox 入口（纯代码 + 主题色，避免反射创建小黑盒组件引发异常），插到标题栏之后
+            final int insertPosition = insertIndex + 1;
             View entry = buildEntryView(activity);
             entry.setTag(ENTRY_TAG);
+            entry.setClickable(true);
+            entry.setFocusable(true);
+            entry.setElevation(dp(activity, 2));
             entry.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     try {
-                        Intent intent = new Intent();
-                        intent.setClassName("com.better.heybox", "com.better.heybox.SettingsActivity");
-                        activity.startActivity(intent);
+                        showEmbeddedSettings(activity, root, entry, insertPosition);
                     } catch (Throwable t) {
-                        log(Log.ERROR, TAG, "打开设置界面失败", t);
+                        log(Log.ERROR, TAG, "渲染内嵌设置界面失败", t);
+                        Toast.makeText(activity, "BetterHeybox 内嵌设置加载失败",
+                                Toast.LENGTH_SHORT).show();
                     }
                 }
             });
@@ -310,6 +576,247 @@ public class MainModule extends XposedModule {
             log(Log.INFO, TAG, "✔ 设置入口已插入标题栏下方");
         } catch (Throwable t) {
             log(Log.ERROR, TAG, "插入设置入口异常", t);
+        }
+    }
+
+    /**
+     * 在小黑盒设置页原地渲染模块设置，不启动模块自己的 SettingsActivity。
+     * 原设置项只在面板展开期间隐藏，关闭面板后恢复，避免破坏宿主页面状态。
+     */
+    private void showEmbeddedSettings(final Activity activity, final ViewGroup root,
+                                      final View entry, final int panelIndex)
+            throws PackageManager.NameNotFoundException {
+        if (root.findViewWithTag(EMBEDDED_SETTINGS_TAG) != null) {
+            return;
+        }
+
+        Context moduleContext = activity.createPackageContext(
+                "com.better.heybox", Context.CONTEXT_IGNORE_SECURITY);
+        // 使用宿主当前 Configuration，确保小黑盒自己的深色模式也能命中 values-night。
+        moduleContext = moduleContext.createConfigurationContext(
+                new Configuration(activity.getResources().getConfiguration()));
+        // 保留模块自己的 Theme 和 Resources。宿主 Theme 可能包含小黑盒私有资源 ID，
+        // 直接 setTo 到模块 Context 会在解析 TextView 颜色时触发 Resources$NotFoundException。
+        ContextThemeWrapper themedModuleContext = new ContextThemeWrapper(
+                moduleContext, android.R.style.Theme_DeviceDefault_DayNight);
+        View panel = LayoutInflater.from(themedModuleContext)
+                .inflate(com.better.heybox.R.layout.activity_settings, root, false);
+        panel.setTag(EMBEDDED_SETTINGS_TAG);
+        panel.setLayoutParams(new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // 面板必须覆盖宿主原页面，避免底层文字透出或与开关重叠。
+        applyEmbeddedPalette(panel, activity);
+        panel.setClickable(true);
+        panel.setFocusable(true);
+        panel.setElevation(dp(activity, 4));
+
+        final List<View> hiddenViews = new ArrayList<>();
+        for (int i = 0; i < root.getChildCount(); i++) {
+            View child = root.getChildAt(i);
+            if (child != entry && child != panel && i >= panelIndex
+                    && child.getVisibility() != View.GONE) {
+                hiddenViews.add(child);
+                child.setVisibility(View.GONE);
+            }
+        }
+        entry.setVisibility(View.GONE);
+        bindEmbeddedSettings(activity, panel, new Runnable() {
+            @Override
+            public void run() {
+                root.removeView(panel);
+                for (View child : hiddenViews) {
+                    child.setVisibility(View.VISIBLE);
+                }
+                entry.setVisibility(View.VISIBLE);
+            }
+        });
+        root.addView(panel, Math.min(panelIndex, root.getChildCount()));
+        panel.bringToFront();
+        log(Log.INFO, TAG, "✔ BetterHeybox 设置已在小黑盒页面内展开");
+    }
+
+    /** 宿主切换深浅色后刷新已打开的内嵌面板，不重新创建或跳转 Activity。 */
+    private void refreshSettingsThemeIfOpen(Activity activity) {
+        try {
+            int rootId = activity.getResources().getIdentifier("root", "id", TARGET_PKG);
+            View rootView = rootId != 0 ? activity.findViewById(rootId) : null;
+            if (!(rootView instanceof ViewGroup)) {
+                return;
+            }
+            ViewGroup root = (ViewGroup) rootView;
+            View entry = root.findViewWithTag(ENTRY_TAG);
+            if (entry != null) {
+                applyEntryPalette(entry, activity);
+            }
+            View panel = root.findViewWithTag(EMBEDDED_SETTINGS_TAG);
+            if (panel != null) {
+                applyEmbeddedPalette(panel, activity);
+                View close = panel.findViewById(com.better.heybox.R.id.btn_exit);
+                if (close != null) {
+                    ThemeUtils.applyFilledButton(close, activity, 24);
+                }
+            }
+        } catch (Throwable t) {
+            log(Log.WARN, TAG, "刷新内嵌设置主题失败", t);
+        }
+    }
+
+    /** 绑定内嵌面板控件；数据源使用当前 Hook 进程可访问的 RemotePreferences。 */
+    private void bindEmbeddedSettings(final Activity activity, View panel, final Runnable onClose) {
+        bindEmbeddedSwitch(activity, panel, com.better.heybox.R.id.switch_open_screen,
+                App.KEY_OPEN_SCREEN, true);
+        bindEmbeddedSwitch(activity, panel, com.better.heybox.R.id.switch_feed_ad,
+                App.KEY_FEED_AD, true);
+        bindEmbeddedSwitch(activity, panel, com.better.heybox.R.id.switch_bubble_ad,
+                App.KEY_BUBBLE_AD, true);
+        bindEmbeddedSwitch(activity, panel, com.better.heybox.R.id.switch_corner_ad,
+                App.KEY_CORNER_AD, true);
+        bindEmbeddedSwitch(activity, panel, com.better.heybox.R.id.switch_promote_ad,
+                App.KEY_PROMOTE_AD, true);
+
+        bindEmbeddedRestartSwitch(activity, panel, com.better.heybox.R.id.switch_hide_tab_home,
+                App.KEY_HIDE_TAB_HOME, false);
+        bindEmbeddedRestartSwitch(activity, panel, com.better.heybox.R.id.switch_hide_tab_hot,
+                App.KEY_HIDE_TAB_HOT, false);
+        bindEmbeddedRestartSwitch(activity, panel, com.better.heybox.R.id.switch_hide_tab_game,
+                App.KEY_HIDE_TAB_GAME, false);
+        bindEmbeddedRestartSwitch(activity, panel, com.better.heybox.R.id.switch_hide_add,
+                App.KEY_HIDE_ADD, false);
+        bindEmbeddedSwitch(activity, panel, com.better.heybox.R.id.switch_copy_post,
+                App.KEY_COPY_POST, true);
+        bindEmbeddedSwitch(activity, panel, com.better.heybox.R.id.switch_block_update,
+                App.KEY_BLOCK_UPDATE, false);
+
+        TextView title = panel.findViewById(com.better.heybox.R.id.settings_embedded_title);
+        if (title != null) {
+            title.setText("BetterHeybox 设置");
+        }
+        View close = panel.findViewById(com.better.heybox.R.id.btn_exit);
+        if (close != null) {
+            close.setOnClickListener(v -> onClose.run());
+            if (close instanceof TextView) {
+                ((TextView) close).setText("返回小黑盒设置");
+            }
+            ThemeUtils.applyFilledButton(close, activity, 24);
+        }
+    }
+
+    /** 强制同步卡片和分割线颜色，避免宿主使用自定义深色模式时资源限定符不更新。 */
+    private void applyEmbeddedPalette(View root, Context hostContext) {
+        boolean dark = isHostDarkMode(hostContext);
+        int background = dark ? 0xFF000000 : 0xFFFFFFFF;
+        int surface = dark ? 0xFF1F1F1F : 0xFFF7F7F7;
+        int primary = dark ? 0xFFFFFFFF : 0xFF000000;
+        int secondary = dark ? 0xFFBDBDBD : 0xFF666666;
+        int divider = dark ? 0x40FFFFFF : 0x1F000000;
+        root.setBackgroundColor(background);
+        applyEmbeddedPaletteRecursive(root, surface, divider, primary, secondary);
+        applySwitchPaletteRecursive(root, hostContext, dark);
+    }
+
+    private void applyEmbeddedPaletteRecursive(View view, int surface, int divider,
+                                               int primary, int secondary) {
+        if (view instanceof TextView) {
+            TextView textView = (TextView) view;
+            textView.setTextColor(textView.getTextSize() <= dp(view.getContext(), 14.5f)
+                    ? secondary : primary);
+        }
+        if (view.getBackground() instanceof GradientDrawable) {
+            ((GradientDrawable) view.getBackground()).setColor(surface);
+        } else if (view.getLayoutParams() != null
+                && view.getLayoutParams().height >= 0
+                && view.getLayoutParams().height <= dp(view.getContext(), 2)
+                && view.getBackground() instanceof ColorDrawable) {
+            view.setBackgroundColor(divider);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                applyEmbeddedPaletteRecursive(group.getChildAt(i), surface, divider,
+                        primary, secondary);
+            }
+        }
+    }
+
+    private void applySwitchPaletteRecursive(View view, Context hostContext, boolean dark) {
+        if (view instanceof Switch) {
+            int accent = ThemeUtils.resolveAccent(hostContext);
+            int inactiveThumb = dark ? 0xFFBDBDBD : 0xFF757575;
+            int inactiveTrack = dark ? 0x66757575 : 0x4D000000;
+            int checkedTrack = android.graphics.Color.argb(0x66,
+                    android.graphics.Color.red(accent),
+                    android.graphics.Color.green(accent),
+                    android.graphics.Color.blue(accent));
+            int[][] states = new int[][]{
+                    new int[]{android.R.attr.state_checked}, new int[]{}
+            };
+            ((Switch) view).setThumbTintList(new ColorStateList(states,
+                    new int[]{accent, inactiveThumb}));
+            ((Switch) view).setTrackTintList(new ColorStateList(states,
+                    new int[]{checkedTrack, inactiveTrack}));
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                applySwitchPaletteRecursive(group.getChildAt(i), hostContext, dark);
+            }
+        }
+    }
+
+    private void bindEmbeddedSwitch(final Activity activity, View panel, int switchId,
+                                    final String key, boolean defaultValue) {
+        final Switch sw = panel.findViewById(switchId);
+        if (sw == null) {
+            return;
+        }
+        sw.setChecked(readEmbeddedBoolean(key, defaultValue));
+        sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            writeEmbeddedBoolean(activity, key, isChecked);
+        });
+    }
+
+    private void bindEmbeddedRestartSwitch(final Activity activity, View panel, int switchId,
+                                           final String key, boolean defaultValue) {
+        final Switch sw = panel.findViewById(switchId);
+        if (sw == null) {
+            return;
+        }
+        sw.setChecked(readEmbeddedBoolean(key, defaultValue));
+        sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (!writeEmbeddedBoolean(activity, key, isChecked)) {
+                return;
+            }
+            new AlertDialog.Builder(activity)
+                    .setTitle("重新启动APP生效")
+                    .setMessage("底栏改动需重启小黑盒后生效")
+                    .setPositiveButton("我知道了", null)
+                    .show();
+        });
+    }
+
+    private boolean readEmbeddedBoolean(String key, boolean defaultValue) {
+        try {
+            SharedPreferences prefs = getRemotePreferences(App.PREFS_GROUP);
+            return prefs != null ? prefs.getBoolean(key, defaultValue) : defaultValue;
+        } catch (Throwable t) {
+            log(Log.WARN, TAG, "读取设置失败: " + key, t);
+            return defaultValue;
+        }
+    }
+
+    private boolean writeEmbeddedBoolean(Activity activity, String key, boolean value) {
+        try {
+            Intent request = new Intent(PreferenceReceiver.ACTION_SET_BOOLEAN)
+                    .setComponent(new android.content.ComponentName(
+                            "com.better.heybox", "com.better.heybox.PreferenceReceiver"))
+                    .putExtra(PreferenceReceiver.EXTRA_KEY, key)
+                    .putExtra(PreferenceReceiver.EXTRA_VALUE, value);
+            activity.sendBroadcast(request);
+            return true;
+        } catch (Throwable t) {
+            log(Log.ERROR, TAG, "写入设置失败: " + key, t);
+            Toast.makeText(activity, R.string.service_not_ready, Toast.LENGTH_SHORT).show();
+            return false;
         }
     }
 
@@ -322,53 +829,12 @@ public class MainModule extends XposedModule {
         }
     }
 
-    /** 复用小黑盒 SettingItemView（真实方法名，未被混淆） */
-    private View createSettingItem(final Activity activity) {
-        try {
-            ClassLoader cl = activity.getClassLoader();
-            Class<?> clazz = Class.forName(
-                    "com.max.xiaoheihe.module.account.component.SettingItemView", false, cl);
-            Object item = clazz.getConstructor(Context.class).newInstance(activity);
-
-            clazz.getMethod("setTitle", String.class).invoke(item, "BetterHeybox 设置");
-            try {
-                clazz.getMethod("setTitleDesc", String.class).invoke(item, "广告过滤与界面增强");
-            } catch (Throwable ignored) {
-            }
-            Class<?> typeEnum = Class.forName(
-                    "com.max.xiaoheihe.module.account.component.SettingItemView$Type", false, cl);
-            Object arrow = Enum.valueOf((Class) typeEnum, "Arrow");
-            clazz.getMethod("setRightType", typeEnum).invoke(item, arrow);
-            try {
-                clazz.getMethod("setShowBottomDivider", boolean.class).invoke(item, true);
-            } catch (Throwable ignored) {
-            }
-            ((View) item).setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    try {
-                        Intent intent = new Intent();
-                        intent.setClassName("com.better.heybox", "com.better.heybox.SettingsActivity");
-                        activity.startActivity(intent);
-                    } catch (Throwable t) {
-                        log(Log.ERROR, TAG, "打开设置界面失败", t);
-                    }
-                }
-            });
-            return (View) item;
-        } catch (Throwable t) {
-            log(Log.WARN, TAG, "复用 SettingItemView 失败，回退纯代码: " + t);
-            return null;
-        }
-    }
-
     /** 纯代码构建入口项（高对比硬编码颜色，深浅色均清晰可见） */
     private View buildEntryView(Context context) {
-        boolean dark = isDarkMode(context);
-        // 高对比：浅色模式黑字白底，深色模式白字深灰底
-        int textPrimary = dark ? 0xFFE8E8E8 : 0xFF111111;
-        int textSecondary = dark ? 0xFFAAAAAA : 0xFF666666;
-        int background = dark ? 0xFF2A2A2A : 0xFFFFFFFF;
+        boolean dark = isHostDarkMode(context);
+        int textPrimary = dark ? 0xFFFFFFFF : 0xFF000000;
+        int textSecondary = dark ? 0xFFBDBDBD : 0xFF666666;
+        int background = dark ? 0xFF000000 : 0xFFFFFFFF;
 
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -403,30 +869,62 @@ public class MainModule extends XposedModule {
         arrow.setTextColor(textSecondary);
         row.addView(arrow);
 
+        applyEntryPalette(row, context);
+
         return row;
     }
 
-    /** 判断当前是否深色模式 */
-    private boolean isDarkMode(Context context) {
-        try {
-            int night = context.getResources().getConfiguration().uiMode
-                    & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
-            return night == android.content.res.Configuration.UI_MODE_NIGHT_YES;
-        } catch (Throwable t) {
-            return false;
+    private void applyEntryPalette(View entry, Context context) {
+        boolean dark = isHostDarkMode(context);
+        int primary = dark ? 0xFFFFFFFF : 0xFF000000;
+        int secondary = dark ? 0xFFBDBDBD : 0xFF666666;
+        int background = dark ? 0xFF000000 : 0xFFFFFFFF;
+        entry.setBackgroundColor(background);
+        if (!(entry instanceof ViewGroup)) {
+            return;
+        }
+        ViewGroup row = (ViewGroup) entry;
+        if (row.getChildCount() > 0 && row.getChildAt(0) instanceof ViewGroup) {
+            ViewGroup textBox = (ViewGroup) row.getChildAt(0);
+            if (textBox.getChildCount() > 0 && textBox.getChildAt(0) instanceof TextView) {
+                ((TextView) textBox.getChildAt(0)).setTextColor(primary);
+            }
+            if (textBox.getChildCount() > 1 && textBox.getChildAt(1) instanceof TextView) {
+                ((TextView) textBox.getChildAt(1)).setTextColor(secondary);
+            }
+        }
+        if (row.getChildCount() > 1 && row.getChildAt(1) instanceof TextView) {
+            ((TextView) row.getChildAt(1)).setTextColor(secondary);
         }
     }
 
-    /** 读取主题颜色（兼容深浅色模式），失败返回 fallback */
-    private int resolveThemeColor(Context context, int attr, int fallback) {
+    private boolean isHostDarkMode(Context context) {
+        Boolean override = HOST_DARK_MODE_OVERRIDE;
+        if (override != null) {
+            return override;
+        }
         try {
-            android.util.TypedValue tv = new android.util.TypedValue();
-            if (context.getTheme().resolveAttribute(attr, tv, true)) {
-                return tv.data;
+            int background = ThemeUtils.resolveColor(context, android.R.attr.colorBackground, 0);
+            if (background != 0) {
+                return isDarkColor(background);
             }
         } catch (Throwable ignored) {
         }
-        return fallback;
+        return ThemeUtils.isDarkMode(context);
+    }
+
+    private boolean isDarkColor(int color) {
+        double luminance = (0.2126 * linearColor(android.graphics.Color.red(color))
+                + 0.7152 * linearColor(android.graphics.Color.green(color))
+                + 0.0722 * linearColor(android.graphics.Color.blue(color)));
+        return luminance < 0.45;
+    }
+
+    private double linearColor(int channel) {
+        double value = channel / 255.0;
+        return value <= 0.03928
+                ? value / 12.92
+                : Math.pow((value + 0.055) / 1.055, 2.4);
     }
 
     private int dp(Context context, float value) {

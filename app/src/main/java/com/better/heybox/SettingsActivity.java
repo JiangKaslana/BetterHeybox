@@ -3,9 +3,7 @@ package com.better.heybox;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlertDialog;
-import android.content.ComponentName;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -30,6 +28,7 @@ public class SettingsActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
         setTitle(R.string.settings_title);
+        ThemeUtils.applyFilledButton(findViewById(R.id.btn_exit), this, 24);
 
         // 广告过滤（即时生效）
         bindSwitch(R.id.switch_open_screen, App.KEY_OPEN_SCREEN, true);
@@ -47,8 +46,8 @@ public class SettingsActivity extends Activity {
         // 帖子增强（进详情页即时生效）
         bindSwitch(R.id.switch_copy_post, App.KEY_COPY_POST, true);
 
-        // 通用：不显示桌面图标（立即生效）
-        bindHideIconSwitch();
+        // 通用
+        bindSwitch(R.id.switch_block_update, App.KEY_BLOCK_UPDATE, false);
 
         // 退出按钮：关闭设置界面
         findViewById(R.id.btn_exit).setOnClickListener(new View.OnClickListener() {
@@ -93,58 +92,6 @@ public class SettingsActivity extends Activity {
                 showRestartDialog();
             }
         });
-    }
-
-    /** 不显示桌面图标：切换时禁用/恢复 LaunchActivity（组件级），立即生效 */
-    private void bindHideIconSwitch() {
-        final Switch sw = findViewById(R.id.switch_hide_icon);
-        SharedPreferences prefs = App.getPrefs();
-        boolean hide = prefs != null ? prefs.getBoolean(App.KEY_HIDE_ICON, false)
-                : getSharedPreferences(App.LOCAL_PREFS, MODE_PRIVATE).getBoolean(App.KEY_HIDE_ICON, false);
-        sw.setChecked(hide);
-        // 进入页面时先校正一次组件状态（防止设置与状态不一致）
-        setLauncherIconVisible(!hide);
-        sw.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                SharedPreferences p = App.getPrefs();
-                if (p == null) {
-                    Toast.makeText(SettingsActivity.this, R.string.service_not_ready, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                p.edit().putBoolean(App.KEY_HIDE_ICON, isChecked).apply();
-                // 本地同步一份，供 App 启动时校正组件状态
-                getSharedPreferences(App.LOCAL_PREFS, MODE_PRIVATE)
-                        .edit().putBoolean(App.KEY_HIDE_ICON, isChecked).apply();
-                setLauncherIconVisible(!isChecked);
-                Toast.makeText(SettingsActivity.this,
-                        isChecked ? R.string.hide_icon_on : R.string.hide_icon_off,
-                        Toast.LENGTH_LONG).show();
-            }
-        });
-    }
-
-    /** 显示/隐藏桌面图标（禁用/恢复 LaunchActivity）。
-     *  隐藏用 DISABLED；恢复用 DEFAULT（回到 manifest 初始态，比 ENABLED 更可靠）。 */
-    private void setLauncherIconVisible(boolean visible) {
-        try {
-            ComponentName cn = new ComponentName(this, LaunchActivity.class);
-            getPackageManager().setComponentEnabledSetting(cn,
-                    visible
-                            ? PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
-                            : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    PackageManager.DONT_KILL_APP);
-        } catch (Throwable t) {
-            Log.e(TAG, "切换桌面图标失败: " + t);
-        }
-        if (visible) {
-            // 部分桌面（Lawnchair 等）不监听组件恢复广播，主动发一次 PACKAGE_CHANGED 帮助刷新
-            try {
-                sendBroadcast(new android.content.Intent(android.content.Intent.ACTION_PACKAGE_CHANGED,
-                        android.net.Uri.parse("package:" + getPackageName())));
-            } catch (Throwable ignored) {
-            }
-        }
     }
 
     /** 「重启后生效」弹窗（模仿小黑盒 DNS 设置的「重新启动APP生效」交互） */

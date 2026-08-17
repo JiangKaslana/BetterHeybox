@@ -19,10 +19,8 @@
     <string name="copy_post">允许复制帖子正文</string>
     <string name="copy_post_desc">长按正文弹安卓系统「复制/全选」菜单，采用系统复制</string>
     <string name="section_general">通用</string>
-    <string name="hide_icon">不显示桌面图标</string>
-    <string name="hide_icon_desc">隐藏后可从 小黑盒设置 → BetterHeybox 设置 进入</string>
-    <string name="hide_icon_on">已隐藏桌面图标，可从小黑盒设置进入本页</string>
-    <string name="hide_icon_off">桌面图标已恢复（若未立即显示，请稍等或重启桌面）</string>
+    <string name="block_update">屏蔽 Heybox 更新</string>
+    <string name="block_update_desc">阻止版本更新提示和自动下载，默认关闭</string>
     <!-- 版本号展示文本：发布新版本时与 gradle.properties 的 VERSION_NAME 同步更新 -->
     <string name="version_footer">BetterHeybox v0.2.0</string>
     <string name="exit">退出</string>

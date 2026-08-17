@@ -18,6 +18,7 @@ captures/
 
 # Temp
 analysis/
+.tools/
 docs/
 
 # Keystore

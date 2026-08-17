@@ -20,27 +20,20 @@
         tools:ignore="MissingApplicationIcon">
 
         <!--
-          桌面图标入口（可被「不显示桌面图标」开关禁用）。
-          隐藏后仍可通过 小黑盒设置 → BetterHeybox 设置 进入模块设置。
-        -->
-        <activity
-            android:name=".LaunchActivity"
-            android:exported="true"
-            android:theme="@android:style/Theme.DeviceDefault.DayNight">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-        <!--
-          模块设置界面。exported=true：允许小黑盒进程（Hook 注入的入口）启动它。
-          不设 LAUNCHER：由 LaunchActivity 作为桌面入口（可被开关禁用）。
+          模块设置界面。由小黑盒内嵌入口使用；不提供独立桌面启动入口。
         -->
         <activity
             android:name=".SettingsActivity"
             android:exported="true"
             android:theme="@android:style/Theme.DeviceDefault.DayNight" />
+
+        <receiver
+            android:name=".PreferenceReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.better.heybox.SET_BOOLEAN" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
