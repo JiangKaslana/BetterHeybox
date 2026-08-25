@@ -31,6 +31,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     public static final String KEY_HIDE_ADD = "hide_add";
     public static final String KEY_COPY_POST = "copy_post";
     public static final String KEY_BLOCK_UPDATE = "block_update";
+    public static final String KEY_SYSTEM_SHARE = "system_share";
 
     // 框架服务实例（volatile 保证跨线程可见）
     private static volatile XposedService sService;

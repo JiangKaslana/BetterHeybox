@@ -51,6 +51,7 @@ public class SettingsActivity extends Activity {
 
         // 帖子增强（进详情页即时生效）
         bindSwitch(R.id.switch_copy_post, App.KEY_COPY_POST, true);
+        bindSwitch(R.id.switch_system_share, App.KEY_SYSTEM_SHARE, true);
 
         // 通用
         bindSwitch(R.id.switch_block_update, App.KEY_BLOCK_UPDATE, false);

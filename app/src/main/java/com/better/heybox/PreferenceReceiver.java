@@ -73,10 +73,15 @@ public class PreferenceReceiver extends BroadcastReceiver {
                             + ", valueType=" + (value == null ? "null" : value.getClass().getName()));
                 }
             }
-            remoteEditor.apply();
-            Log.i("BetterHeybox", "远程提交 apply 已调用: acceptedCount=" + acceptedCount);
-            pending.edit().clear().apply();
-            Log.i("BetterHeybox", "待提交缓存已清理: pendingCount=" + pending.getAll().size());
+            boolean committed = remoteEditor.commit();
+            Log.i("BetterHeybox", "远程提交 commit 已返回: success=" + committed
+                    + ", acceptedCount=" + acceptedCount);
+            if (committed) {
+                pending.edit().clear().apply();
+                Log.i("BetterHeybox", "待提交缓存已清理: pendingCount=" + pending.getAll().size());
+            } else {
+                Log.w("BetterHeybox", "远程提交未成功，保留待提交缓存");
+            }
         } catch (Throwable t) {
             Log.e("BetterHeybox", "远程提交异常，保留待提交缓存", t);
         }
@@ -93,6 +98,7 @@ public class PreferenceReceiver extends BroadcastReceiver {
                 || App.KEY_HIDE_TAB_GAME.equals(key)
                 || App.KEY_HIDE_ADD.equals(key)
                 || App.KEY_COPY_POST.equals(key)
-                || App.KEY_BLOCK_UPDATE.equals(key);
+                || App.KEY_BLOCK_UPDATE.equals(key)
+                || App.KEY_SYSTEM_SHARE.equals(key);
     }
 }

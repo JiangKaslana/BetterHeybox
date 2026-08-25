@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.content.pm.PackageInfo;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -16,10 +17,20 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.text.method.LinkMovementMethod;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Proxy;
 import java.lang.ref.WeakReference;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.github.libxposed.api.XposedInterface;
@@ -45,6 +56,8 @@ public class MainModule extends XposedModule {
     private static final String ENTRY_TAG = "betterheybox_entry";
     private static final String EMBEDDED_SETTINGS_TAG = "betterheybox_embedded_settings";
     private static final AtomicBoolean VERSION_NOTICE_SHOWN = new AtomicBoolean(false);
+    private static final int TARGET_FORWARD_ICON = 0x7f0800de;
+    private volatile Object pendingImageShareMediaData;
 
     @Override
     public void onModuleLoaded(ModuleLoadedParam param) {
@@ -84,6 +97,7 @@ public class MainModule extends XposedModule {
         hookPromotePosts(cl);
         hookTextSelectHandler(cl);
         hookPostTextSelect(cl);
+        hookImageLongPressMenu(cl);
         hookScrollIntercept(cl);
 
         log(Log.INFO, TAG, "Hook 安装流程结束");
@@ -608,11 +622,11 @@ public class MainModule extends XposedModule {
     /** 开关分类：广告过滤 / 底部导航栏隐藏 / 解除复制 / 通用 */
     private static final SettingsGroup[] SETTINGS_GROUPS = new SettingsGroup[]{
             new SettingsGroup("广告过滤", new SwitchDef[]{
-                    new SwitchDef("开屏广告", null, App.KEY_OPEN_SCREEN, true, false),
-                    new SwitchDef("信息流广告", null, App.KEY_FEED_AD, true, false),
-                    new SwitchDef("气泡广告", null, App.KEY_BUBBLE_AD, true, false),
-                    new SwitchDef("角标广告", null, App.KEY_CORNER_AD, true, false),
-                    new SwitchDef("推广贴", null, App.KEY_PROMOTE_AD, true, false),
+                    new SwitchDef("屏蔽开屏广告", null, App.KEY_OPEN_SCREEN, true, false),
+                    new SwitchDef("屏蔽信息流广告", null, App.KEY_FEED_AD, true, false),
+                    new SwitchDef("屏蔽气泡广告", null, App.KEY_BUBBLE_AD, true, false),
+                    new SwitchDef("屏蔽角标广告", null, App.KEY_CORNER_AD, true, false),
+                    new SwitchDef("屏蔽推广贴", null, App.KEY_PROMOTE_AD, true, false),
             }),
             new SettingsGroup("底部导航栏隐藏", new SwitchDef[]{
                     new SwitchDef("隐藏首页", null, App.KEY_HIDE_TAB_HOME, false, true),
@@ -622,6 +636,7 @@ public class MainModule extends XposedModule {
             }),
             new SettingsGroup("解除复制", new SwitchDef[]{
                     new SwitchDef("解除复制", "恢复系统标准文本选择", App.KEY_COPY_POST, true, false),
+                    new SwitchDef("系统分享图片", "在图片长按菜单中打开系统分享", App.KEY_SYSTEM_SHARE, true, false),
             }),
             new SettingsGroup("通用", new SwitchDef[]{
                     new SwitchDef("屏蔽更新", "屏蔽小黑盒更新入口", App.KEY_BLOCK_UPDATE, false, false),
@@ -1236,6 +1251,298 @@ public class MainModule extends XposedModule {
         }
     }
 
+    /** 在小黑盒原有图片长按菜单末尾追加系统分享，不替换原菜单。 */
+    private void hookImageLongPressMenu(ClassLoader cl) {
+        try {
+            Class<?> customizer = Class.forName(
+                    "com.max.xiaoheihe.utils.imageviewer.ui.BaseResUICustomizer", false, cl);
+            Class<?> mediaData = Class.forName(
+                    "com.max.xiaoheihe.utils.imageviewer.MediaData", false, cl);
+            Method getLocalHandlers = customizer.getDeclaredMethod("r", customizer, mediaData);
+            hook(getLocalHandlers).intercept(chain -> {
+                Object result = chain.proceed();
+                if (!(result instanceof List)) {
+                    log(Log.WARN, TAG, "图片长按处理器返回值不是 List: "
+                            + (result == null ? "null" : result.getClass().getName()));
+                    return result;
+                }
+                Object currentMediaData = chain.getArg(1);
+                appendSystemShareHandler((List<?>) result, currentMediaData, cl);
+                return result;
+            });
+
+            Method openShare = customizer.getDeclaredMethod("h0", mediaData);
+            hook(openShare).intercept(chain -> {
+                pendingImageShareMediaData = chain.getArg(0);
+                log(Log.INFO, TAG, "图片长按分享入口命中: mediaData="
+                        + (pendingImageShareMediaData == null ? "null"
+                        : pendingImageShareMediaData.getClass().getName()));
+                return chain.proceed();
+            });
+
+            Class<?> dialogBuilder = Class.forName(
+                    "com.max.xiaoheihe.accelworld.HBShareDialog$a", false, cl);
+            Method addHandlers = dialogBuilder.getDeclaredMethod("c", List.class);
+            hook(addHandlers).intercept(chain -> {
+                Object handlers = chain.getArg(0);
+                if (handlers instanceof List) {
+                    log(Log.INFO, TAG, "HBShareDialog 处理器列表命中: count="
+                            + ((List<?>) handlers).size());
+                    appendSystemShareHandler((List<?>) handlers,
+                            pendingImageShareMediaData, cl);
+                }
+                return chain.proceed();
+            });
+
+            Class<?> shareDialog = Class.forName(
+                    "com.max.xiaoheihe.accelworld.HBShareDialog", false, cl);
+            Method showDialog = shareDialog.getDeclaredMethod("g");
+            hook(showDialog).intercept(chain -> {
+                Object dialog = chain.getThisObject();
+                Object actions = readField(dialog, "f83135h");
+                if (actions instanceof List) {
+                    appendSystemShareAction((List<?>) actions, cl);
+                }
+                return chain.proceed();
+            });
+
+            Class<?> shareViewManager = Class.forName(
+                    "com.max.common.common.share.ShareViewManager", false, cl);
+            Class<?> forwardModel = Class.forName(
+                    "com.max.data.model.share.IForwardModel", false, cl);
+            Method buildForwardActions = shareViewManager.getDeclaredMethod(
+                    "m", Context.class, forwardModel, List.class);
+            hook(buildForwardActions).intercept(chain -> {
+                Object result = chain.proceed();
+                Object actions = chain.getArg(2);
+                if (actions instanceof List) {
+                    appendSystemShareAction((List<?>) actions, cl);
+                }
+                return result;
+            });
+            log(Log.INFO, TAG, "✔ 图片长按真实分享面板 Hook 已安装: BaseResUICustomizer.r");
+        } catch (Throwable t) {
+            log(Log.ERROR, TAG, "✘ 图片长按真实分享面板 Hook 失败", t);
+        }
+    }
+
+    private void appendSystemShareAction(List<?> actions, ClassLoader cl) {
+        try {
+            if (!isEnabled(App.KEY_SYSTEM_SHARE, true)) {
+                return;
+            }
+            for (Object actionObject : actions) {
+                if (actionObject == null) {
+                    continue;
+                }
+                Method getAction = actionObject.getClass().getMethod("getAction");
+                Object action = getAction.invoke(actionObject);
+                Method getActionTag = action.getClass().getMethod("getActionTag");
+                if ("SystemShare".equals(String.valueOf(getActionTag.invoke(action)))) {
+                    return;
+                }
+            }
+
+            Class<?> actionObjClass = Class.forName(
+                    "com.max.data.bean.share.ActionObj", false, cl);
+            Class<?> actionClass = Class.forName(
+                    "com.max.data.model.share.IAction", false, cl);
+            Class<?> customActionClass = Class.forName(
+                    "com.max.data.model.share.IAction$CustomAction", false, cl);
+            Object customAction = customActionClass.getConstructor(String.class)
+                    .newInstance("SystemShare");
+
+            Object actionObject = actionObjClass.getConstructor(
+                            String.class, Integer.class, String.class, String.class,
+                            String.class, String.class, actionClass)
+                    .newInstance("系统分享", TARGET_FORWARD_ICON, null, null, null, null, customAction);
+            @SuppressWarnings("unchecked")
+            List<Object> mutableActions = (List<Object>) actions;
+            mutableActions.add(actionObject);
+            log(Log.INFO, TAG, "图片长按菜单动作已追加系统分享: count="
+                    + mutableActions.size());
+        } catch (Throwable t) {
+            log(Log.WARN, TAG, "追加图片系统分享动作失败", t);
+        }
+    }
+
+    private void appendSystemShareHandler(List<?> handlers, Object mediaData, ClassLoader cl) {
+        try {
+            if (!isEnabled(App.KEY_SYSTEM_SHARE, true)) {
+                return;
+            }
+            for (Object handler : handlers) {
+                if (handler == null) {
+                    continue;
+                }
+                Method getTarget = handler.getClass().getMethod("getTarget");
+                if ("SystemShare".equals(String.valueOf(getTarget.invoke(handler)))) {
+                    return;
+                }
+            }
+
+            Class<?> localHandler = Class.forName(
+                    "com.max.common.common.share.local.c", false, cl);
+            Class<?> callbackType = Class.forName("un.a", false, cl);
+            InvocationHandler callback = (proxy, method, args) -> {
+                if ("invoke".equals(method.getName())) {
+                    log(Log.INFO, TAG, "图片系统分享处理器已命中");
+                    shareImageWithSystemChooser(mediaData);
+                }
+                if (method.getReturnType() == Void.TYPE) {
+                    return null;
+                }
+                return readKotlinUnit(cl);
+            };
+            Object callbackProxy = Proxy.newProxyInstance(
+                    cl, new Class<?>[]{callbackType}, callback);
+            Object action = localHandler.getConstructor(String.class, callbackType)
+                    .newInstance("SystemShare", callbackProxy);
+            @SuppressWarnings("unchecked")
+            List<Object> mutableHandlers = (List<Object>) handlers;
+            mutableHandlers.add(action);
+            log(Log.INFO, TAG, "图片长按处理器已追加系统分享: count=" + mutableHandlers.size());
+        } catch (Throwable t) {
+            log(Log.WARN, TAG, "追加图片系统分享处理器失败", t);
+        }
+    }
+
+    private Object readKotlinUnit(ClassLoader cl) {
+        try {
+            Class<?> unit = Class.forName("kotlin.b2", false, cl);
+            Field instance = unit.getDeclaredField("f140421a");
+            instance.setAccessible(true);
+            return instance.get(null);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private Object readField(Object target, String name) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            Field field = target.getClass().getDeclaredField(name);
+            field.setAccessible(true);
+            return field.get(target);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    /**
+     * 从 MediaData 取得当前图片 URL，在目标应用缓存目录中下载后借用目标 FileProvider 分享。
+     * 返回 true 表示已接管长按，false 表示交还目标应用原逻辑。
+     */
+    private boolean shareImageWithSystemChooser(Object mediaData) {
+        if (mediaData == null) {
+            return false;
+        }
+        try {
+            Method urlMethod = mediaData.getClass().getMethod("U");
+            Method contextMethod = mediaData.getClass().getMethod("n");
+            String imageUrl = String.valueOf(urlMethod.invoke(mediaData));
+            Object contextObject = contextMethod.invoke(mediaData);
+            if (!(contextObject instanceof Context) || imageUrl.length() == 0
+                    || "null".equals(imageUrl)) {
+                log(Log.WARN, TAG, "图片分享跳过: MediaData 缺少 URL 或 Context");
+                return false;
+            }
+            Context context = (Context) contextObject;
+            log(Log.INFO, TAG, "图片分享开始下载: url=" + imageUrl);
+            Thread worker = new Thread(() -> {
+                File output = null;
+                try {
+                    output = downloadImage(context, imageUrl);
+                    Uri uri = getTargetFileUri(context, output);
+                    if (uri == null) {
+                        throw new IllegalStateException("目标 FileProvider 返回 null");
+                    }
+                    File finalOutput = output;
+                    context.getMainExecutor().execute(() -> {
+                        try {
+                            Intent share = new Intent(Intent.ACTION_SEND)
+                                    .setType("image/*")
+                                    .putExtra(Intent.EXTRA_STREAM, uri)
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            Intent chooser = Intent.createChooser(share, "分享图片");
+                            if (!(context instanceof Activity)) {
+                                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            }
+                            context.startActivity(chooser);
+                            log(Log.INFO, TAG, "图片分享 chooser 已唤起: uri=" + uri);
+                        } catch (Throwable t) {
+                            log(Log.ERROR, TAG, "图片分享 chooser 启动失败", t);
+                            if (finalOutput != null) {
+                                finalOutput.delete();
+                            }
+                        }
+                    });
+                } catch (Throwable t) {
+                    log(Log.WARN, TAG, "图片分享准备失败，回退原分享", t);
+                    if (output != null) {
+                        output.delete();
+                    }
+                    context.getMainExecutor().execute(() -> {
+                        Toast.makeText(context, "图片暂时无法分享", Toast.LENGTH_SHORT).show();
+                    });
+                }
+            }, "BetterHeybox-image-share");
+            worker.start();
+            return true;
+        } catch (Throwable t) {
+            log(Log.WARN, TAG, "图片分享接管失败，回退原分享", t);
+            return false;
+        }
+    }
+
+    private File downloadImage(Context context, String imageUrl) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(imageUrl).openConnection();
+        connection.setConnectTimeout(10000);
+        connection.setReadTimeout(20000);
+        connection.setInstanceFollowRedirects(true);
+        connection.connect();
+        if (connection.getResponseCode() < 200 || connection.getResponseCode() >= 300) {
+            throw new IllegalStateException("HTTP " + connection.getResponseCode());
+        }
+        File dir = new File(context.getCacheDir(), "betterheybox-share");
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IllegalStateException("无法创建分享缓存目录");
+        }
+        File output = new File(dir, "image-" + System.currentTimeMillis() + ".jpg");
+        try (InputStream input = connection.getInputStream();
+             FileOutputStream file = new FileOutputStream(output)) {
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                file.write(buffer, 0, count);
+            }
+        } finally {
+            connection.disconnect();
+        }
+        return output;
+    }
+
+    /** 目标应用已声明该 authority，反射调用避免模块编译期依赖目标 AndroidX 类。 */
+    private Uri getTargetFileUri(Context context, File file) throws Exception {
+        Class<?> provider = Class.forName("androidx.core.content.FileProvider",
+                true, context.getClassLoader());
+        String authority = TARGET_PKG + ".fileprovider";
+        String[] methodNames = {"getUriForFile", "h", "i"};
+        for (String methodName : methodNames) {
+            try {
+                Method method = provider.getDeclaredMethod(
+                        methodName, Context.class, String.class, File.class);
+                method.setAccessible(true);
+                return (Uri) method.invoke(null, context, authority, file);
+            } catch (NoSuchMethodException ignored) {
+                // 目标 App 的 AndroidX 版本可能经过混淆，继续尝试兼容名称。
+            }
+        }
+        throw new NoSuchMethodException("FileProvider URI method not found");
+    }
+
     /** 恢复标题/正文 TextView 的系统标准文本选择（绕过小黑盒防复制） */
     private void enablePostTextSelect(View root) {
         if (!isEnabled(App.KEY_COPY_POST, true)) {
@@ -1252,7 +1559,9 @@ public class MainModule extends XposedModule {
                 if (v instanceof TextView) {
                     TextView tv = (TextView) v;
                     tv.setTextIsSelectable(true);
-                    tv.setOnTouchListener(null); // 清掉 TextSelectHandler 拦截
+                    // TextSelectHandler 已由 hook 返回 false；保留它，避免破坏 @用户名点击链路。
+                    tv.setLinksClickable(true);
+                    tv.setMovementMethod(LinkMovementMethod.getInstance());
                     try {
                         tv.setCustomSelectionActionModeCallback(null);
                     } catch (Throwable ignored) {
