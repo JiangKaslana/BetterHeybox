@@ -34,8 +34,8 @@ import io.github.libxposed.api.XposedModule;
  *    点击后叠加原生子页面风格设置面板（TitleBar + CardView 分组 + SettingItemView 开关），
  *    深浅色完全跟随小黑盒主题
  *
- * 开关状态：模块 App 通过 libxposed service 写入 RemotePreferences，
- * 本类在小黑盒进程用 getRemotePreferences() 读取/写入（跨进程共享）。
+ * 开关状态：本类在小黑盒进程通过显式广播请求模块进程写入 RemotePreferences，
+ * 与模块 App 共享同一份跨进程设置；本进程的 getRemotePreferences() 仅用于读取。
  */
 public class MainModule extends XposedModule {
 
@@ -736,7 +736,7 @@ public class MainModule extends XposedModule {
             boolean cur = readEmbeddedBoolean(def.key, def.def);
             itemCls.getMethod("setChecked", boolean.class, boolean.class).invoke(item, cur, false);
 
-            // 监听切换：writeEmbeddedBoolean 写回（广播交由模块进程写入 RemotePreferences），
+            // 监听切换：writeEmbeddedBoolean 通过显式广播请求模块进程写回 RemotePreferences，
             // 需重启项复用小黑盒「重启APP生效」Dialog（AccelWorldWebkitKt.x）。
             // 用真实匿名类而非 Proxy：避免 Proxy 动态代理与宿主实现间的 ClassCastException。
             Class<?> listenerCls = Class.forName(
@@ -802,17 +802,22 @@ public class MainModule extends XposedModule {
     }
 
     private boolean writeEmbeddedBoolean(Activity activity, String key, boolean value) {
+        log(Log.INFO, TAG, "设置写入开始: key=" + key + ", value=" + value
+                + ", pid=" + android.os.Process.myPid());
         try {
             Intent request = new Intent(PreferenceReceiver.ACTION_SET_BOOLEAN)
                     .setComponent(new android.content.ComponentName(
                             "com.better.heybox", "com.better.heybox.PreferenceReceiver"))
                     .putExtra(PreferenceReceiver.EXTRA_KEY, key)
                     .putExtra(PreferenceReceiver.EXTRA_VALUE, value);
+            log(Log.INFO, TAG, "广播发送开始: action=" + PreferenceReceiver.ACTION_SET_BOOLEAN
+                    + ", key=" + key + ", value=" + value);
             activity.sendBroadcast(request);
+            log(Log.INFO, TAG, "广播发送完成: key=" + key + ", value=" + value);
             return true;
         } catch (Throwable t) {
-            log(Log.ERROR, TAG, "写入设置失败: " + key, t);
-            Toast.makeText(activity, R.string.service_not_ready, Toast.LENGTH_SHORT).show();
+            log(Log.ERROR, TAG, "广播发送异常: key=" + key + ", value=" + value, t);
+            Toast.makeText(activity, "BetterHeybox 设置服务不可用", Toast.LENGTH_SHORT).show();
             return false;
         }
     }

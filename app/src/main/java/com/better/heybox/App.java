@@ -2,6 +2,7 @@ package com.better.heybox;
 
 import android.app.Application;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import io.github.libxposed.service.XposedService;
 import io.github.libxposed.service.XposedServiceHelper;
@@ -12,6 +13,8 @@ import io.github.libxposed.service.XposedServiceHelper;
  * 供注入到小黑盒进程的 Hook 代码跨进程读取。
  */
 public class App extends Application implements XposedServiceHelper.OnServiceListener {
+
+    private static final String TAG = "BetterHeybox";
 
     /** RemotePreferences 分组名（Hook 侧用同名读取） */
     public static final String PREFS_GROUP = "betterheybox";
@@ -35,18 +38,24 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     @Override
     public void onCreate() {
         super.onCreate();
+        Log.i(TAG, "App.onCreate: pid=" + android.os.Process.myPid());
         XposedServiceHelper.registerListener(this);
+        Log.i(TAG, "已注册 XposedService 监听器");
     }
 
     @Override
     public void onServiceBind(XposedService service) {
         sService = service;
-        PreferenceReceiver.tryFlush(this,
-                getSharedPreferences("betterheybox_pending", MODE_PRIVATE));
+        SharedPreferences pending = getSharedPreferences("betterheybox_pending", MODE_PRIVATE);
+        Log.i(TAG, "XposedService 已绑定: service=" + describe(service)
+                + ", pendingCount=" + pending.getAll().size());
+        PreferenceReceiver.tryFlush(this, pending);
     }
 
     @Override
     public void onServiceDied(XposedService service) {
+        Log.w(TAG, "XposedService 已断开: service=" + describe(service)
+                + ", current=" + describe(sService));
         sService = null;
     }
 
@@ -54,13 +63,26 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     public static SharedPreferences getPrefs() {
         XposedService service = sService;
         if (service == null) {
+            Log.w(TAG, "获取 RemotePreferences 失败: XposedService 未绑定");
             return null;
         }
         try {
-            return service.getRemotePreferences(PREFS_GROUP);
+            SharedPreferences prefs = service.getRemotePreferences(PREFS_GROUP);
+            if (prefs == null) {
+                Log.e(TAG, "获取 RemotePreferences 失败: service 返回 null, group=" + PREFS_GROUP);
+            } else {
+                Log.i(TAG, "获取 RemotePreferences 成功: group=" + PREFS_GROUP);
+            }
+            return prefs;
         } catch (Throwable t) {
+            Log.e(TAG, "获取 RemotePreferences 异常: group=" + PREFS_GROUP, t);
             return null;
         }
+    }
+
+    private static String describe(XposedService service) {
+        return service == null ? "null"
+                : service.getClass().getName() + "@" + Integer.toHexString(System.identityHashCode(service));
     }
 
     /** 获取框架服务实例（未连接时为 null） */

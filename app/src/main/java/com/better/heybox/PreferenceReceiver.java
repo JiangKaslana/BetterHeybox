@@ -6,7 +6,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.util.Log;
 
-/** 接收宿主进程的设置变更请求，在模块进程中写入可写的 RemotePreferences。 */
+/** 兼容接收旧版宿主广播，并在模块进程中写入 RemotePreferences。 */
 public class PreferenceReceiver extends BroadcastReceiver {
 
     public static final String ACTION_SET_BOOLEAN = "com.better.heybox.SET_BOOLEAN";
@@ -16,37 +16,69 @@ public class PreferenceReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (intent == null || !ACTION_SET_BOOLEAN.equals(intent.getAction())) {
+        if (intent == null) {
+            Log.w("BetterHeybox", "广播接收: intent=null");
             return;
         }
+        String action = intent.getAction();
         String key = intent.getStringExtra(EXTRA_KEY);
-        if (!isAllowedKey(key)) {
+        boolean value = intent.getBooleanExtra(EXTRA_VALUE, false);
+        Log.i("BetterHeybox", "广播接收: action=" + action + ", key=" + key
+                + ", value=" + value + ", pid=" + android.os.Process.myPid());
+        if (!ACTION_SET_BOOLEAN.equals(action)) {
+            Log.w("BetterHeybox", "广播忽略: action 不匹配, action=" + action);
             return;
         }
-        boolean value = intent.getBooleanExtra(EXTRA_VALUE, false);
+        if (!isAllowedKey(key)) {
+            Log.w("BetterHeybox", "广播拒绝: key 不允许, key=" + key);
+            return;
+        }
         SharedPreferences pending = context.getSharedPreferences(PENDING_PREFS,
                 Context.MODE_PRIVATE);
         pending.edit().putBoolean(key, value).apply();
+        Log.i("BetterHeybox", "广播已写入待提交缓存: key=" + key + ", value=" + value
+                + ", pendingCount=" + pending.getAll().size());
         tryFlush(context, pending);
     }
 
     public static void tryFlush(Context context, SharedPreferences pending) {
+        if (pending == null) {
+            Log.e("BetterHeybox", "远程提交跳过: pending=null");
+            return;
+        }
+        java.util.Map<String, ?> values = pending.getAll();
+        Log.i("BetterHeybox", "远程提交开始: pendingCount=" + values.size()
+                + ", pid=" + android.os.Process.myPid());
         try {
             SharedPreferences remote = App.getPrefs();
             if (remote == null) {
+                Log.w("BetterHeybox", "远程提交等待: RemotePreferences 不可用，保留待提交缓存");
                 return;
             }
+            Log.i("BetterHeybox", "远程偏好已获取，开始构造 Editor: group=" + App.PREFS_GROUP);
             SharedPreferences.Editor remoteEditor = remote.edit();
-            for (String key : pending.getAll().keySet()) {
-                Object value = pending.getAll().get(key);
+            if (remoteEditor == null) {
+                Log.e("BetterHeybox", "远程提交失败: RemotePreferences.edit 返回 null");
+                return;
+            }
+            int acceptedCount = 0;
+            for (String key : values.keySet()) {
+                Object value = values.get(key);
                 if (value instanceof Boolean && isAllowedKey(key)) {
                     remoteEditor.putBoolean(key, (Boolean) value);
+                    acceptedCount++;
+                    Log.i("BetterHeybox", "远程提交加入变更: key=" + key + ", value=" + value);
+                } else {
+                    Log.w("BetterHeybox", "远程提交跳过无效缓存: key=" + key
+                            + ", valueType=" + (value == null ? "null" : value.getClass().getName()));
                 }
             }
             remoteEditor.apply();
+            Log.i("BetterHeybox", "远程提交 apply 已调用: acceptedCount=" + acceptedCount);
             pending.edit().clear().apply();
+            Log.i("BetterHeybox", "待提交缓存已清理: pendingCount=" + pending.getAll().size());
         } catch (Throwable t) {
-            Log.e("BetterHeybox", "写入远程设置失败", t);
+            Log.e("BetterHeybox", "远程提交异常，保留待提交缓存", t);
         }
     }
 
