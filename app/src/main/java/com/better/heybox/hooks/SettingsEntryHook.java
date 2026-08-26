@@ -3,13 +3,18 @@ package com.better.heybox.hooks;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.text.InputType;
 import android.util.Log;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -50,12 +55,22 @@ public final class SettingsEntryHook {
         final String key;
         final boolean def;
         final boolean restart;
+        final boolean clickRow;
+        final String editKey; // clickRow 时编辑的字符串配置 key（null 则不弹编辑框）
         SwitchDef(String title, String desc, String key, boolean def, boolean restart) {
+            this(title, desc, key, def, restart, false, null);
+        }
+        SwitchDef(String title, String desc, String key, boolean def, boolean restart, boolean clickRow) {
+            this(title, desc, key, def, restart, clickRow, null);
+        }
+        SwitchDef(String title, String desc, String key, boolean def, boolean restart, boolean clickRow, String editKey) {
             this.title = title;
             this.desc = desc;
             this.key = key;
             this.def = def;
             this.restart = restart;
+            this.clickRow = clickRow;
+            this.editKey = editKey;
         }
     }
 
@@ -86,24 +101,27 @@ public final class SettingsEntryHook {
                     new SwitchDef("解除复制", "恢复系统标准文本选择", App.KEY_COPY_POST, true, false),
                     new SwitchDef("系统分享图片", "在图片长按菜单中打开系统分享", App.KEY_SYSTEM_SHARE, true, false),
             }),
+            new SettingsGroup("每日任务", new SwitchDef[]{
+                    new SwitchDef("自动完成每日分享任务", "自动完成 3 种分享类型：图片帖 / 普通帖 / 频道关注（不拦截 QQ 分享）", App.KEY_DAILY_TASK_ENABLED, false, false),
+                    new SwitchDef("图片帖链接", "第一种分享类型：分享图片帖", null, false, false, true, App.KEY_DAILY_TASK_PICTURE),
+                    new SwitchDef("普通帖链接", "第二种分享类型：分享普通帖", null, false, false, true, App.KEY_DAILY_TASK_NORMAL),
+                    new SwitchDef("游戏链接", "第三种分享类型：关注游戏", null, false, false, true, App.KEY_DAILY_TASK_CHANNEL),
+            }),
             new SettingsGroup("通用", new SwitchDef[]{
                     new SwitchDef("屏蔽更新", "屏蔽小黑盒更新入口", App.KEY_BLOCK_UPDATE, false, false),
                     new SwitchDef("记录日志", "开启后自动记录模块日志到文件", App.KEY_LOG, false, false),
             }),
     };
-
-    /**
-     * 向小黑盒通用设置页（GeneralSettingsActivity）注入 BetterHeybox 入口。
-     * 在 G1（onCreate 模板，每次进页恰好触发一次）返回后插入，此时布局已 setContentView。
-     * 注入不能同步做：binding 字段与列表容器此时未必就绪（经验证会破坏设置项），
-     * 故 post 到下一帧再试，未就绪则由 insertSettingsEntryWithRetry 短间隔重试。
-     */
     private void hookSettingsEntry(ClassLoader cl) {
         try {
-            // 通用设置页：GeneralSettingsActivity，ViewBinding = fi.r0（ActivityGeneralSettingsBinding）
             Class<?> clazz = Class.forName("com.max.xiaoheihe.module.account.GeneralSettingsActivity", false, cl);
-            Method g1 = clazz.getDeclaredMethod("G1");
-            module.hook(g1).intercept(chain -> {
+            Method setupMethod;
+            try {
+                setupMethod = clazz.getDeclaredMethod("G1");
+            } catch (NoSuchMethodException ignored) {
+                setupMethod = clazz.getDeclaredMethod("L1");
+            }
+            module.hook(setupMethod).intercept(chain -> {
                 Object result = chain.proceed();
                 try {
                     Object thisObj = chain.getThisObject();
@@ -121,7 +139,7 @@ public final class SettingsEntryHook {
                 }
                 return result;
             });
-            module.logd(Log.INFO, module.TAG, "✔ 设置页入口 Hook 已安装 (G1+retry)");
+            module.logd(Log.INFO, module.TAG, "✔ 设置页入口 Hook 已安装 (" + setupMethod.getName() + "+retry)");
         } catch (Throwable t) {
             module.logd(Log.ERROR, module.TAG, "✘ 设置页入口 Hook 失败", t);
         }
@@ -146,11 +164,6 @@ public final class SettingsEntryHook {
         }
     }
 
-    /**
-     * 尝试在通用设置页面插入自定义设置入口
-     * @param activity 当前活动实例
-     * @return 插入成功返回true，失败返回false
-     */
     private boolean tryInsertSettingsEntry(Activity activity) {
         LogRecorder.setContext(activity);
         HeyboxPrefs.init(activity);
@@ -201,7 +214,8 @@ public final class SettingsEntryHook {
     private Object getGeneralSettingsBinding(Activity activity) {
         try {
             for (Field f : activity.getClass().getDeclaredFields()) {
-                if ("fi.r0".equals(f.getType().getName())) {
+                String typeName = f.getType().getName();
+                if ("fi.r0".equals(typeName) || "hi.r0".equals(typeName)) {
                     f.setAccessible(true);
                     return f.get(activity);
                 }
@@ -216,16 +230,21 @@ public final class SettingsEntryHook {
         try {
             dismissEmbeddedSettings();
             HeyboxPrefs.init(activity);
-
             int appbarBg = 0xFFFFFFFF;
             int pageBg = 0xFFFFFFFF;
-            try {
-                appbarBg = activity.getResources().getColor(0x7f060022);
-            } catch (Throwable ignored) {
+            int appbarBgId = resId(activity, "appbar_bg_color", "color", 0);
+            if (appbarBgId != 0) {
+                try {
+                    appbarBg = activity.getResources().getColor(appbarBgId);
+                } catch (Throwable ignored) {
+                }
             }
-            try {
-                pageBg = activity.getResources().getColor(0x7f0600b9);
-            } catch (Throwable ignored) {
+            int pageBgId = resId(activity, "color_bg_subtle_day_night", "color", 0);
+            if (pageBgId != 0) {
+                try {
+                    pageBg = activity.getResources().getColor(pageBgId);
+                } catch (Throwable ignored) {
+                }
             }
 
             int statusBarH = 0;
@@ -262,7 +281,8 @@ public final class SettingsEntryHook {
             Object titleBar = titleBarCls.getConstructor(Context.class).newInstance(activity);
             ((View) titleBar).setBackgroundColor(appbarBg);
             titleBarCls.getMethod("setTitle", CharSequence.class).invoke(titleBar, "BetterHeybox 设置");
-            titleBarCls.getMethod("setNavigationIcon", int.class).invoke(titleBar, 0x7f08009b);
+            titleBarCls.getMethod("setNavigationIcon", int.class)
+                    .invoke(titleBar, resId(activity, "appbar_back", "drawable", 0));
             Class<?> ocl = Class.forName("android.view.View$OnClickListener", false, cl);
             Object backListener = new View.OnClickListener() {
                 @Override
@@ -312,9 +332,12 @@ public final class SettingsEntryHook {
                 footer.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12);
                 footer.setGravity(android.view.Gravity.CENTER);
                 int footerColor = 0xFF8A8A8A;
-                try {
-                    footerColor = activity.getResources().getColor(0x7f06013a);
-                } catch (Throwable ignored) {
+                int footerColorId = resId(activity, "color_text_tertiary_day_night", "color", 0);
+                if (footerColorId != 0) {
+                    try {
+                        footerColor = activity.getResources().getColor(footerColorId);
+                    } catch (Throwable ignored) {
+                    }
                 }
                 footer.setTextColor(footerColor);
                 LinearLayout.LayoutParams footerLp = new LinearLayout.LayoutParams(
@@ -368,17 +391,15 @@ public final class SettingsEntryHook {
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             TextView groupTitle = new TextView(activity);
             groupTitle.setText(group.title);
-            int titleSize;
-            try {
-                titleSize = activity.getResources().getDimensionPixelSize(0x7f07039b);
-            } catch (Throwable ignored) {
-                titleSize = module.dp(activity, 13);
-            }
+            int titleSize = module.dp(activity, 13);
             groupTitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, titleSize);
             int titleColor = 0xFF8A8A8A;
-            try {
-                titleColor = activity.getResources().getColor(0x7f06013a);
-            } catch (Throwable ignored) {
+            int titleColorId = resId(activity, "color_text_tertiary_day_night", "color", 0);
+            if (titleColorId != 0) {
+                try {
+                    titleColor = activity.getResources().getColor(titleColorId);
+                } catch (Throwable ignored) {
+                }
             }
             groupTitle.setTextColor(titleColor);
             groupTitle.setGravity(android.view.Gravity.CENTER_VERTICAL);
@@ -442,6 +463,21 @@ public final class SettingsEntryHook {
             }
             Class<?> typeEnum = Class.forName(
                     "com.max.xiaoheihe.module.account.component.SettingItemView$Type", false, cl);
+            if (def.clickRow) {
+                Object arrowType = Enum.valueOf((Class) typeEnum, "Arrow");
+                itemCls.getMethod("setRightType", typeEnum).invoke(item, arrowType);
+                try {
+                    itemCls.getMethod("setShowBottomDivider", boolean.class).invoke(item, true);
+                } catch (Throwable ignored) {
+                }
+                final String editKey = def.editKey;
+                itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
+                        .invoke(item, (View.OnClickListener) v -> showEditLinkDialog(activity, def.title, editKey));
+                int itemH = module.dp(activity, 48);
+                ((View) item).setLayoutParams(new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, itemH));
+                return (View) item;
+            }
             Object switchType = Enum.valueOf((Class) typeEnum, "SwitchButton");
             itemCls.getMethod("setRightType", typeEnum).invoke(item, switchType);
             try {
@@ -465,13 +501,111 @@ public final class SettingsEntryHook {
                 }
             };
             itemCls.getMethod("setOnCheckedChangeListener", listenerCls).invoke(item, listener);
-            int itemH = activity.getResources().getDimensionPixelSize(0x7f0700ff);
+            int itemH = module.dp(activity, 48);
             ((View) item).setLayoutParams(new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, itemH));
             return (View) item;
         } catch (Throwable t) {
             module.logd(Log.WARN, module.TAG, "创建 SettingItemView 开关失败 (" + def.title + "): " + t);
             return null;
+        }
+    }
+    private int resId(Activity activity, String name, String type, int fallback) {
+        try {
+            int id = activity.getResources().getIdentifier(name, type, MainModule.TARGET_PKG);
+            return id != 0 ? id : fallback;
+        } catch (Throwable t) {
+            return fallback;
+        }
+    }
+    private void showEditLinkDialog(final Activity activity, final String title, final String key) {
+        try {
+            ClassLoader cl = activity.getClassLoader();
+            Class<?> dialogCls = Class.forName("com.max.hbcommon.view.d", false, cl);
+            Class<?> builderCls = Class.forName("com.max.hbcommon.view.d$i", false, cl);
+            Object builder = builderCls.getConstructor(Context.class).newInstance(activity);
+            final EditText input = new EditText(activity);
+            int pad = module.dp(activity, 10);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(0, pad, 0, pad * 2);
+            input.setLayoutParams(lp);
+            input.setPadding(pad, pad, pad, pad);
+            input.setGravity(Gravity.CENTER_VERTICAL);
+            try {
+                int bgId = activity.getResources().getIdentifier(
+                        "bg_dialog_edit", "drawable", MainModule.TARGET_PKG);
+                if (bgId != 0) {
+                    input.setBackgroundResource(bgId);
+                }
+            } catch (Throwable ignored) {
+            }
+            try {
+                int colorId = activity.getResources().getIdentifier(
+                        "color_text_primary_day_night", "color", MainModule.TARGET_PKG);
+                if (colorId != 0) {
+                    input.setTextColor(activity.getResources().getColor(colorId));
+                }
+            } catch (Throwable ignored) {
+            }
+            input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            input.setSingleLine(true);
+            input.setHint("例如：https://api.xiaoheihe.cn/v3/bbs/app/api/web/share?link_id=123456");
+            String cur = HeyboxPrefs.getString(key, "");
+            input.setText(cur == null ? "" : cur);
+            input.setSelection(input.getText().length());
+            builderCls.getMethod("B", CharSequence.class).invoke(builder, title);
+            builderCls.getMethod("i", View.class).invoke(builder, input);
+            Class<?> onClickCls = DialogInterface.OnClickListener.class;
+            Object saveListener = java.lang.reflect.Proxy.newProxyInstance(
+                    cl, new Class<?>[]{onClickCls}, (proxy, method, args) -> {
+                        if ("onClick".equals(method.getName())) {
+                            try {
+                                HeyboxPrefs.setString(key, input.getText().toString().trim());
+                                Toast.makeText(activity, "已保存", Toast.LENGTH_SHORT).show();
+                                module.logd(Log.INFO, module.TAG, "分享链接已保存: " + key);
+                            } catch (Throwable t) {
+                                module.logd(Log.WARN, module.TAG, "保存分享链接失败: " + t);
+                            }
+                        }
+                        return null;
+                    });
+            Object cancelListener = java.lang.reflect.Proxy.newProxyInstance(
+                    cl, new Class<?>[]{onClickCls}, (proxy, method, args) -> null);
+            builderCls.getMethod("x", CharSequence.class, onClickCls).invoke(builder, "保存", saveListener);
+            builderCls.getMethod("r", CharSequence.class, onClickCls).invoke(builder, "取消", cancelListener);
+            builderCls.getMethod("J").invoke(builder);
+            module.logd(Log.INFO, module.TAG, "✔ 使用小黑盒原生弹窗编辑链接: " + key);
+        } catch (Throwable t) {
+            module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗不可用，回退系统弹窗: " + t);
+            showEditLinkDialogFallback(activity, title, key);
+        }
+    }
+    private void showEditLinkDialogFallback(final Activity activity, final String title, final String key) {
+        try {
+            final EditText input = new EditText(activity);
+            input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            input.setSingleLine(true);
+            input.setHint("例如：https://api.xiaoheihe.cn/v3/bbs/app/api/web/share?link_id=123456");
+            String cur = HeyboxPrefs.getString(key, "");
+            input.setText(cur == null ? "" : cur);
+            input.setSelection(input.getText().length());
+            new AlertDialog.Builder(activity)
+                    .setTitle(title)
+                    .setView(input)
+                    .setPositiveButton("保存", (dialog, which) -> {
+                        try {
+                            HeyboxPrefs.setString(key, input.getText().toString().trim());
+                            Toast.makeText(activity, "已保存", Toast.LENGTH_SHORT).show();
+                            module.logd(Log.INFO, module.TAG, "分享链接已保存: " + key);
+                        } catch (Throwable t) {
+                            module.logd(Log.WARN, module.TAG, "保存分享链接失败: " + t);
+                        }
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+        } catch (Throwable t) {
+            module.logd(Log.WARN, module.TAG, "打开链接编辑框失败: " + t);
         }
     }
 
@@ -561,7 +695,7 @@ public final class SettingsEntryHook {
                 itemCls.getMethod("setShowBottomDivider", boolean.class).invoke(item, true);
             } catch (Throwable ignored) {
             }
-            int itemH = activity.getResources().getDimensionPixelSize(0x7f0700ff);
+            int itemH = module.dp(activity, 48);
             ((View) item).setLayoutParams(new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, itemH));
             content.addView((View) item);

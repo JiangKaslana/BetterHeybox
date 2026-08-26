@@ -69,6 +69,19 @@ public final class HeyboxPrefs {
         return prefs.edit().putBoolean(key, value).commit();
     }
 
+    public static String getString(String key, String defaultValue) {
+        SharedPreferences prefs = get();
+        return prefs != null ? prefs.getString(key, defaultValue) : defaultValue;
+    }
+
+    public static boolean setString(String key, String value) {
+        SharedPreferences prefs = get();
+        if (prefs == null) {
+            return false;
+        }
+        return prefs.edit().putString(key, value).commit();
+    }
+
     private static Context resolveAppContext() {
         try {
             Class<?> activityThread = Class.forName("android.app.ActivityThread");

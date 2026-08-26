@@ -385,6 +385,189 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- ========== 每日任务 ========== -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingTop="16dp"
+            android:paddingBottom="8dp"
+            android:text="@string/daily_task_section"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorSecondary" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/card_bg"
+            android:paddingHorizontal="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingVertical="10dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/daily_task_switch"
+                        android:textSize="16sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/daily_task_switch_desc"
+                        android:textSize="12sp"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <Switch
+                    android:id="@+id/switch_daily_task"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1px"
+                android:background="@color/settings_divider" />
+
+            <LinearLayout
+                android:id="@+id/btn_daily_picture"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingVertical="10dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/daily_task_picture"
+                        android:textSize="16sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/daily_task_picture_desc"
+                        android:textSize="12sp"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="&gt;"
+                    android:textSize="18sp"
+                    android:textColor="?android:attr/textColorSecondary" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1px"
+                android:background="@color/settings_divider" />
+
+            <LinearLayout
+                android:id="@+id/btn_daily_normal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingVertical="10dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/daily_task_normal"
+                        android:textSize="16sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/daily_task_normal_desc"
+                        android:textSize="12sp"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="&gt;"
+                    android:textSize="18sp"
+                    android:textColor="?android:attr/textColorSecondary" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1px"
+                android:background="@color/settings_divider" />
+
+            <LinearLayout
+                android:id="@+id/btn_daily_channel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingVertical="10dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/daily_task_channel"
+                        android:textSize="16sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/daily_task_channel_desc"
+                        android:textSize="12sp"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="&gt;"
+                    android:textSize="18sp"
+                    android:textColor="?android:attr/textColorSecondary" />
+            </LinearLayout>
+        </LinearLayout>
+
         <!-- ========== 通用 ========== -->
         <TextView
             android:layout_width="wrap_content"

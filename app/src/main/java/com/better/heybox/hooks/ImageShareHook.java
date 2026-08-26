@@ -1,15 +1,22 @@
 package com.better.heybox.hooks;
 
 import android.app.Activity;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -36,7 +43,8 @@ public final class ImageShareHook {
         hookImageLongPressMenu(cl);
     }
 
-    private static final int TARGET_FORWARD_ICON = 0x7f0800de;
+    /** 系统分享动作图标（资源 ID 跨版本不稳定，运行时按名称解析，见 resolveForwardIcon） */
+    private static final int TARGET_FORWARD_ICON = 0;
     private volatile Object pendingImageShareMediaData;
     private void hookImageLongPressMenu(ClassLoader cl) {
         try {
@@ -85,9 +93,9 @@ public final class ImageShareHook {
             Method showDialog = shareDialog.getDeclaredMethod("g");
             module.hook(showDialog).intercept(chain -> {
                 Object dialog = chain.getThisObject();
-                Object actions = readField(dialog, "f83135h");
+                Object actions = readShareDialogActions(dialog);
                 if (actions instanceof List) {
-                    appendSystemShareAction((List<?>) actions, cl);
+                    appendSystemShareAction((List<?>) actions, cl, findDialogContext(dialog));
                 }
                 return chain.proceed();
             });
@@ -102,7 +110,9 @@ public final class ImageShareHook {
                 Object result = chain.proceed();
                 Object actions = chain.getArg(2);
                 if (actions instanceof List) {
-                    appendSystemShareAction((List<?>) actions, cl);
+                    Object ctxArg = chain.getArg(0);
+                    appendSystemShareAction((List<?>) actions, cl,
+                            ctxArg instanceof Context ? (Context) ctxArg : null);
                 }
                 return result;
             });
@@ -112,7 +122,7 @@ public final class ImageShareHook {
         }
     }
 
-    private void appendSystemShareAction(List<?> actions, ClassLoader cl) {
+    private void appendSystemShareAction(List<?> actions, ClassLoader cl, Context context) {
         try {
             if (!module.isEnabled(App.KEY_SYSTEM_SHARE, true)) {
                 return;
@@ -141,7 +151,7 @@ public final class ImageShareHook {
             Object actionObject = actionObjClass.getConstructor(
                             String.class, Integer.class, String.class, String.class,
                             String.class, String.class, actionClass)
-                    .newInstance("系统分享", TARGET_FORWARD_ICON, null, null, null, null, customAction);
+                    .newInstance("系统分享", resolveForwardIcon(context), null, null, null, null, customAction);
             @SuppressWarnings("unchecked")
             List<Object> mutableActions = (List<Object>) actions;
             mutableActions.add(actionObject);
@@ -169,7 +179,12 @@ public final class ImageShareHook {
 
             Class<?> localHandler = Class.forName(
                     "com.max.common.common.share.local.c", false, cl);
-            Class<?> callbackType = Class.forName("un.a", false, cl);
+            // 本地分享处理器回调接口：393=un.a / 394=wn.a（双版本自适应）
+            Class<?> callbackType = findLocalHandlerCallback(cl);
+            if (callbackType == null) {
+                module.logd(Log.WARN, module.TAG, "未找到本地分享回调接口 (un.a/wn.a)，跳过系统分享处理器");
+                return;
+            }
             InvocationHandler callback = (proxy, method, args) -> {
                 if ("invoke".equals(method.getName())) {
                     module.logd(Log.INFO, module.TAG, "图片系统分享处理器已命中");
@@ -196,12 +211,82 @@ public final class ImageShareHook {
     private Object readKotlinUnit(ClassLoader cl) {
         try {
             Class<?> unit = Class.forName("kotlin.b2", false, cl);
-            Field instance = unit.getDeclaredField("f140421a");
+            // 393=f140421a / 394=f140881a（双版本自适应）
+            Field instance = null;
+            try {
+                instance = unit.getDeclaredField("f140421a");
+            } catch (NoSuchFieldException ignored) {
+                instance = unit.getDeclaredField("f140881a");
+            }
             instance.setAccessible(true);
             return instance.get(null);
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /**
+     * 读取 HBShareDialog 分享动作列表字段：393=f83135h / 394=f83116h（双版本自适应）。
+     */
+    private Object readShareDialogActions(Object dialog) {
+        if (dialog == null) {
+            return null;
+        }
+        Object actions = readField(dialog, "f83135h");
+        if (actions == null) {
+            actions = readField(dialog, "f83116h");
+        }
+        return actions;
+    }
+
+    /**
+     * 本地分享处理器回调接口：393=un.a / 394=wn.a（Kotlin Function0，双版本自适应）。
+     * 两个都找不到时返回 null，由调用方决定是否跳过。
+     */
+    private Class<?> findLocalHandlerCallback(ClassLoader cl) {
+        try {
+            return Class.forName("un.a", false, cl);
+        } catch (ClassNotFoundException ignored) {
+        }
+        try {
+            return Class.forName("wn.a", false, cl);
+        } catch (ClassNotFoundException ignored) {
+        }
+        return null;
+    }
+
+    /**
+     * 系统分享动作图标：按资源名解析（资源 ID 跨版本不稳定），失败返回 0（使用默认图标）。
+     */
+    private static int resolveForwardIcon(Context context) {
+        if (context == null) {
+            return 0;
+        }
+        try {
+            int id = context.getResources().getIdentifier(
+                    "bbs_sharebutton_edit_tie_46x46", "drawable", MainModule.TARGET_PKG);
+            return id != 0 ? id : 0;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    /** 从 HBShareDialog 对象反射取 Context 字段（393/394 字段名可能不同，按类型匹配） */
+    private Context findDialogContext(Object dialog) {
+        if (dialog == null) {
+            return null;
+        }
+        try {
+            for (Field f : dialog.getClass().getDeclaredFields()) {
+                if (f.getType() == Context.class) {
+                    f.setAccessible(true);
+                    Object v = f.get(dialog);
+                    return v instanceof Context ? (Context) v : null;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
     }
 
     private Object readField(Object target, String name) {
@@ -237,23 +322,33 @@ public final class ImageShareHook {
                 File output = null;
                 try {
                     output = downloadImage(context, imageUrl);
-                    Uri uri = getTargetFileUri(context, output);
-                    if (uri == null) {
-                        throw new IllegalStateException("目标 FileProvider 返回 null");
+                    String mime = guessMimeType(output.getName());
+                    // 优先写入系统相册（MediaStore）→ 图片可被相册真正查看、可被任意 App 分享；
+                    // 失败则回退 FileProvider（外部缓存目录，wbsdk_filepaths 的 external-cache-path 已覆盖）
+                    Uri uri = publishToGallery(context, output);
+                    if (uri != null) {
+                        output.delete(); // 已复制进相册，临时文件不再需要
+                        module.logd(Log.INFO, module.TAG, "图片已保存到系统相册: uri=" + uri);
+                    } else {
+                        uri = getTargetFileUri(context, output);
                     }
+                    if (uri == null) {
+                        throw new IllegalStateException("无法生成图片分享 URI");
+                    }
+                    final Uri shareUri = uri;
                     File finalOutput = output;
                     context.getMainExecutor().execute(() -> {
                         try {
                             Intent share = new Intent(Intent.ACTION_SEND)
-                                    .setType("image/*")
-                                    .putExtra(Intent.EXTRA_STREAM, uri)
+                                    .setType(mime)
+                                    .putExtra(Intent.EXTRA_STREAM, shareUri)
                                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                             Intent chooser = Intent.createChooser(share, "分享图片");
                             if (!(context instanceof Activity)) {
                                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                             }
                             context.startActivity(chooser);
-                            module.logd(Log.INFO, module.TAG, "图片分享 chooser 已唤起: uri=" + uri);
+                            module.logd(Log.INFO, module.TAG, "图片分享 chooser 已唤起: uri=" + shareUri + " mime=" + mime);
                         } catch (Throwable t) {
                             module.logd(Log.ERROR, module.TAG, "图片分享 chooser 启动失败", t);
                             if (finalOutput != null) {
@@ -284,17 +379,25 @@ public final class ImageShareHook {
         connection.setConnectTimeout(10000);
         connection.setReadTimeout(20000);
         connection.setInstanceFollowRedirects(true);
+        // CDN 可能做防盗链/UA 校验，带上基础请求头更稳妥
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36 heybox");
+        connection.setRequestProperty("Referer", "https://api.xiaoheihe.cn/");
         connection.connect();
         if (connection.getResponseCode() < 200 || connection.getResponseCode() >= 300) {
             throw new IllegalStateException("HTTP " + connection.getResponseCode());
         }
-        File dir = new File(context.getCacheDir(), "betterheybox-share");
-        if (!dir.exists() && !dir.mkdirs()) {
+        // 写到外部缓存目录：wbsdk_filepaths 的 external-cache-path 覆盖它，FileProvider 回退路径可用
+        File dir = context.getExternalCacheDir();
+        if (dir == null) {
+            dir = context.getCacheDir();
+        }
+        File shareDir = new File(dir, "betterheybox-share");
+        if (!shareDir.exists() && !shareDir.mkdirs()) {
             throw new IllegalStateException("无法创建分享缓存目录");
         }
-        File output = new File(dir, "image-" + System.currentTimeMillis() + ".jpg");
+        File tmp = new File(shareDir, "image-" + System.currentTimeMillis() + ".tmp");
         try (InputStream input = connection.getInputStream();
-             FileOutputStream file = new FileOutputStream(output)) {
+             FileOutputStream file = new FileOutputStream(tmp)) {
             byte[] buffer = new byte[8192];
             int count;
             while ((count = input.read(buffer)) != -1) {
@@ -303,7 +406,127 @@ public final class ImageShareHook {
         } finally {
             connection.disconnect();
         }
+        // 按文件头识别真实格式，避免扩展名与内容不符导致接收方无法查看/解码
+        String ext = sniffImageExtension(tmp);
+        if (ext == null) {
+            ext = guessExtensionFromUrl(imageUrl);
+        }
+        File output = new File(shareDir, "image-" + System.currentTimeMillis() + "." + ext);
+        if (!tmp.renameTo(output)) {
+            output = tmp; // 重命名失败则沿用 tmp（扩展名可能不准，但可分享）
+        }
         return output;
+    }
+
+    /** 写入系统相册（Pictures/BetterHeybox），返回 content URI；失败返回 null（由调用方回退 FileProvider） */
+    private Uri publishToGallery(Context context, File file) {
+        try {
+            if (Build.VERSION.SDK_INT < 29) {
+                // Android 8~9 写入公共相册需要存储权限（小黑盒已声明 WRITE_EXTERNAL_STORAGE，需已授予）
+                if (context.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    module.logd(Log.WARN, module.TAG, "无 WRITE_EXTERNAL_STORAGE 权限，回退 FileProvider");
+                    return null;
+                }
+            }
+            String mime = guessMimeType(file.getName());
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Images.Media.DISPLAY_NAME, file.getName());
+            values.put(MediaStore.Images.Media.MIME_TYPE, mime);
+            if (Build.VERSION.SDK_INT >= 29) {
+                values.put(MediaStore.Images.Media.RELATIVE_PATH,
+                        Environment.DIRECTORY_PICTURES + "/BetterHeybox");
+                values.put(MediaStore.Images.Media.IS_PENDING, 1);
+            }
+            Uri uri = context.getContentResolver().insert(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) {
+                return null;
+            }
+            try (OutputStream os = context.getContentResolver().openOutputStream(uri);
+                 InputStream in = new FileInputStream(file)) {
+                if (os == null) {
+                    return null;
+                }
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = in.read(buffer)) != -1) {
+                    os.write(buffer, 0, count);
+                }
+            }
+            if (Build.VERSION.SDK_INT >= 29) {
+                ContentValues published = new ContentValues();
+                published.put(MediaStore.Images.Media.IS_PENDING, 0);
+                context.getContentResolver().update(uri, published, null, null);
+            }
+            return uri;
+        } catch (Throwable t) {
+            module.logd(Log.WARN, module.TAG, "写入系统相册失败，回退 FileProvider: " + t);
+            return null;
+        }
+    }
+
+    /** 读取文件头识别真实图片格式；无法识别返回 null */
+    private static String sniffImageExtension(File file) {
+        try (FileInputStream in = new FileInputStream(file)) {
+            byte[] head = new byte[12];
+            int read = in.read(head);
+            if (read >= 3 && (head[0] & 0xFF) == 0xFF && (head[1] & 0xFF) == 0xD8 && (head[2] & 0xFF) == 0xFF) {
+                return "jpg";
+            }
+            if (read >= 8 && (head[0] & 0xFF) == 0x89 && head[1] == 0x50 && head[2] == 0x4E && head[3] == 0x47) {
+                return "png";
+            }
+            if (read >= 6 && head[0] == 'G' && head[1] == 'I' && head[2] == 'F' && head[3] == '8') {
+                return "gif";
+            }
+            if (read >= 12 && head[0] == 'R' && head[1] == 'I' && head[2] == 'F' && head[3] == 'F'
+                    && head[8] == 'W' && head[9] == 'E' && head[10] == 'B' && head[11] == 'P') {
+                return "webp";
+            }
+            if (read >= 2 && head[0] == 'B' && head[1] == 'M') {
+                return "bmp";
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    /** 从 URL 路径猜测图片扩展名（magic bytes 识别失败时的兜底） */
+    private static String guessExtensionFromUrl(String imageUrl) {
+        try {
+            String path = new URL(imageUrl).getPath();
+            int dot = path.lastIndexOf('.');
+            if (dot >= 0 && dot < path.length() - 1) {
+                String ext = path.substring(dot + 1).toLowerCase();
+                if (ext.matches("(jpg|jpeg|png|gif|webp|bmp|heic|heif)")) {
+                    return ext.equals("jpeg") ? "jpg" : ext;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return "jpg";
+    }
+
+    /** 扩展名 → MIME */
+    private static String guessMimeType(String name) {
+        String n = name == null ? "" : name.toLowerCase();
+        if (n.endsWith(".png")) {
+            return "image/png";
+        }
+        if (n.endsWith(".gif")) {
+            return "image/gif";
+        }
+        if (n.endsWith(".webp")) {
+            return "image/webp";
+        }
+        if (n.endsWith(".bmp")) {
+            return "image/bmp";
+        }
+        if (n.endsWith(".heic") || n.endsWith(".heif")) {
+            return "image/heic";
+        }
+        return "image/jpeg";
     }
     private Uri getTargetFileUri(Context context, File file) throws Exception {
         Class<?> provider = Class.forName("androidx.core.content.FileProvider",

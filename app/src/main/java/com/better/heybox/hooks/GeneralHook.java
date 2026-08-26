@@ -68,12 +68,12 @@ public final class GeneralHook {
             module.logd(Log.WARN, module.TAG, "读取 Heybox 版本失败", t);
             return;
         }
-        if (MainModule.TARGET_HEYBOX_VERSION.equals(version)
+        if (MainModule.SUPPORTED_HEYBOX_VERSIONS.contains(version)
                 || !VERSION_NOTICE_SHOWN.compareAndSet(false, true)) {
             return;
         }
 
-        String message = "BetterHeybox 目标版本为 Heybox " + MainModule.TARGET_HEYBOX_VERSION
+        String message = "BetterHeybox 支持 Heybox " + String.join(" / ", MainModule.SUPPORTED_HEYBOX_VERSIONS)
                 + "，当前检测到 " + version;
         try {
             Class<?> toastUtil = Class.forName("com.max.hbutils.utils.f", false, cl);

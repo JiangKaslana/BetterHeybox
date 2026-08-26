@@ -4,10 +4,16 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 import io.github.libxposed.api.XposedModule;
 
 import com.better.heybox.hooks.AdFilterHook;
 import com.better.heybox.hooks.BottomTabHook;
+import com.better.heybox.hooks.DailyTaskHook;
 import com.better.heybox.hooks.GeneralHook;
 import com.better.heybox.hooks.ImageShareHook;
 import com.better.heybox.hooks.PromotePostHook;
@@ -43,8 +49,15 @@ public class MainModule extends XposedModule {
     /** 目标应用（小黑盒）包名 */
     public static final String TARGET_PKG = "com.max.xiaoheihe";
 
-    /** 目标小黑盒版本 */
+    /** 目标小黑盒主版本（兼容旧引用/日志） */
     public static final String TARGET_HEYBOX_VERSION = "1.3.393";
+
+    /** 支持的小黑盒版本集合（1.3.393 / 1.3.394 双版本兼容） */
+    public static final Set<String> SUPPORTED_HEYBOX_VERSIONS =
+            Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
+                    "1.3.393",
+                    "1.3.394"
+            )));
 
     @Override
     public void onModuleLoaded(ModuleLoadedParam param) {
@@ -82,6 +95,7 @@ public class MainModule extends XposedModule {
         new PromotePostHook(this).install(cl);
         new TextSelectHook(this).install(cl);
         new ImageShareHook(this).install(cl);
+        new DailyTaskHook(this).install(cl);
 
         logd(Log.INFO, TAG, "Hook 安装流程结束");
     }
@@ -98,6 +112,22 @@ public class MainModule extends XposedModule {
             SharedPreferences prefs = getRemotePreferences(App.PREFS_GROUP);
             if (prefs != null && prefs.contains(key)) {
                 return prefs.getBoolean(key, def);
+            }
+        } catch (Throwable t) {
+            // 读取失败按默认值处理
+        }
+        return def;
+    }
+
+    /** 读取字符串开关：优先小黑盒进程本地配置，其次框架 RemotePreferences（模块设置页写入值） */
+    public String getString(String key, String def) {
+        if (HeyboxPrefs.contains(key)) {
+            return HeyboxPrefs.getString(key, def);
+        }
+        try {
+            SharedPreferences prefs = getRemotePreferences(App.PREFS_GROUP);
+            if (prefs != null && prefs.contains(key)) {
+                return prefs.getString(key, def);
             }
         } catch (Throwable t) {
             // 读取失败按默认值处理

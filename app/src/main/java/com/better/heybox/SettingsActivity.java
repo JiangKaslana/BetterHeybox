@@ -4,9 +4,11 @@ import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.os.Bundle;
+import android.text.InputType;
 import android.util.Log;
 import android.view.View;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -62,6 +64,12 @@ public class SettingsActivity extends Activity {
         // 帖子增强（进详情页即时生效）
         bindSwitch(R.id.switch_copy_post, App.KEY_COPY_POST, true);
         bindSwitch(R.id.switch_system_share, App.KEY_SYSTEM_SHARE, true);
+
+        // 每日任务（3 种分享类型：图片帖 / 普通帖 / 频道）
+        bindSwitch(R.id.switch_daily_task, App.KEY_DAILY_TASK_ENABLED, false);
+        bindLinkRow(R.id.btn_daily_picture, R.string.daily_task_picture, App.KEY_DAILY_TASK_PICTURE);
+        bindLinkRow(R.id.btn_daily_normal, R.string.daily_task_normal, App.KEY_DAILY_TASK_NORMAL);
+        bindLinkRow(R.id.btn_daily_channel, R.string.daily_task_channel, App.KEY_DAILY_TASK_CHANNEL);
 
         // 通用
         bindSwitch(R.id.switch_block_update, App.KEY_BLOCK_UPDATE, false);
@@ -142,6 +150,7 @@ public class SettingsActivity extends Activity {
             setChecked(R.id.switch_hide_add, App.KEY_HIDE_ADD, false);
             setChecked(R.id.switch_copy_post, App.KEY_COPY_POST, true);
             setChecked(R.id.switch_system_share, App.KEY_SYSTEM_SHARE, true);
+            setChecked(R.id.switch_daily_task, App.KEY_DAILY_TASK_ENABLED, false);
             setChecked(R.id.switch_block_update, App.KEY_BLOCK_UPDATE, false);
             setChecked(R.id.switch_log, App.KEY_LOG, false);
         } finally {
@@ -249,6 +258,45 @@ public class SettingsActivity extends Activity {
         } catch (Throwable t) {
             Log.e(TAG, "热重载异常: " + t);
             return false;
+        }
+    }
+
+    /** 绑定分享链接行（点击弹单行编辑框，RemotePreferences 跨进程同步到小黑盒 Hook 侧） */
+    private void bindLinkRow(int rowId, final int titleRes, final String key) {
+        View row = findViewById(rowId);
+        if (row == null) {
+            return;
+        }
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showEditLinkDialog(getString(titleRes), key);
+            }
+        });
+    }
+
+    /** 编辑单个分享链接 */
+    private void showEditLinkDialog(String title, final String key) {
+        try {
+            final EditText input = new EditText(this);
+            input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            input.setSingleLine(true);
+            input.setHint("例如：https://api.xiaoheihe.cn/v3/bbs/app/api/web/share?link_id=123456");
+            String cur = App.readString(key, "");
+            input.setText(cur == null ? "" : cur);
+            input.setSelection(input.getText().length());
+            new AlertDialog.Builder(this)
+                    .setTitle(title)
+                    .setView(input)
+                    .setPositiveButton("保存", (dialog, which) -> {
+                        App.writeString(key, input.getText().toString().trim());
+                        LogRecorder.recordEvent("分享链接已保存: " + key);
+                        Toast.makeText(this, R.string.daily_task_link_saved, Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+        } catch (Throwable t) {
+            Log.e(TAG, "打开链接编辑框失败: " + t);
         }
     }
 

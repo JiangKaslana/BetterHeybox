@@ -50,6 +50,21 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     public static final String KEY_BLOCK_UPDATE = "block_update";
     public static final String KEY_SYSTEM_SHARE = "system_share";
 
+    /** 每日任务：自动完成分享任务开关 */
+    public static final String KEY_DAILY_TASK_ENABLED = "daily_task_enabled";
+
+    /** 每日任务：图片帖分享链接（第一种分享类型） */
+    public static final String KEY_DAILY_TASK_PICTURE = "daily_task_picture";
+
+    /** 每日任务：普通帖分享链接（第二种分享类型） */
+    public static final String KEY_DAILY_TASK_NORMAL = "daily_task_normal";
+
+    /** 每日任务：频道关注链接（第三种分享类型） */
+    public static final String KEY_DAILY_TASK_CHANNEL = "daily_task_channel";
+
+    /** 每日任务：今日已完成日期（yyyy-MM-dd，跨天自动重置） */
+    public static final String KEY_DAILY_TASK_DONE_DATE = "daily_task_done_date";
+
     /** 日志开关：开启后自动记录模块日志到文件 */
     public static final String KEY_LOG = "log";
 
@@ -130,6 +145,41 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
         }
         SharedPreferences remote = getPrefs();
         return remote != null ? remote.getBoolean(key, defaultValue) : defaultValue;
+    }
+
+    /**
+     * 读字符串：优先待提交缓存，其次 RemotePreferences，最后默认值。
+     */
+    public static String readString(String key, String defaultValue) {
+        App app = sApp;
+        if (app != null) {
+            SharedPreferences pending = app.getSharedPreferences(PENDING_PREFS, MODE_PRIVATE);
+            if (pending.contains(key)) {
+                return pending.getString(key, defaultValue);
+            }
+        }
+        SharedPreferences remote = getPrefs();
+        return remote != null ? remote.getString(key, defaultValue) : defaultValue;
+    }
+
+    /**
+     * 写字符串：框架服务可用直接写 RemotePreferences；否则写入待提交缓存（同步落盘），
+     * 服务绑定后由 {@link PreferenceReceiver#tryFlush} 自动补交。
+     */
+    public static void writeString(String key, String value) {
+        App app = sApp;
+        SharedPreferences remote = getPrefs();
+        if (remote != null) {
+            remote.edit().putString(key, value).apply();
+            LogRecorder.recordEvent("字符串已写入 RemotePreferences: key=" + key);
+            return;
+        }
+        if (app != null) {
+            SharedPreferences pending = app.getSharedPreferences(PENDING_PREFS, MODE_PRIVATE);
+            pending.edit().putString(key, value).commit();
+            LogRecorder.recordEvent("字符串写入待提交缓存: key=" + key);
+            PreferenceReceiver.tryFlush(app, pending);
+        }
     }
 
     /**
