@@ -2,7 +2,7 @@
 
 本项目版本号采用 `v主版本.次版本.修订版本` 格式。推送代码时，CI 会构建带日期和当日序号的版本并将 APK 保存在 Action 成品中；Release 工作流手动输入版本号后创建正式 Release，并在说明中列出 commit 更新内容。
 
-## 0.4.1
+## 0.3.5
 
 ### 修复：394 设置 UI 3 倍大小问题
 
@@ -10,23 +10,25 @@
   资源 ID 每个 APK 各自生成，394 中该 ID 指向 `item_touch_helper_swipe_escape_velocity=120dp`，
   导致行高约 3 倍异常
 - **修复**：行高/字号改用 `module.dp()` 计算值；颜色/图标等资源改为**按资源名解析**
-  （`getIdentifier`，失败回退默认值），彻底消除跨版本资源 ID 错位风险
+  `getIdentifier`
 
 ### 每日任务自动化 + 图片分享修复
 
 - 新增「自动完成每日分享任务」：自动完成小黑盒每日任务的 **3 种分享类型**——
-  图片帖分享（PicturePostPageActivityV2）→ 普通帖分享（NormalPostPageActivity）→ 频道关注（ChannelsDetailActivity）；
+  图片帖分享（PicturePostPageActivityV2）→ 普通帖分享（NormalPostPageActivity）→ 游戏分享（ChannelsDetailActivity）；
   通过 Hook `ShareUtils.P/y` 触发 `HBShareData.shareListener.onResult` 完成，**不拦截 QQ 分享入口**
-- 新增 3 个分享链接设置（图片帖 / 普通帖 / 频道，各自独立配置）：小黑盒内嵌设置面板与独立设置页均可编辑，
+- 新增 3 个分享链接设置（图片帖 / 普通帖 / 游戏，各自独立配置）：小黑盒内嵌设置面板与独立设置页均可编辑，
   支持 api.xiaoheihe.cn / xiaoheihe.cn / heybox:// 链接，经小黑盒 RouterActivity 自动路由；
   未配置的类型自动跳过；每日状态按日期记录，跨天重置
 - 链接编辑弹窗复用小黑盒原生 **HeyBoxDialog**（`com.max.hbcommon.view.d$i`，仿 SettingActivity「修改版本号」输入弹窗，
   含 `bg_dialog_edit` 背景/主题色/14sp），393/394 双版本通用；小黑盒类不可用时自动回退系统 AlertDialog
+- 新增「伪装通知权限」开关：Hook 框架 `NotificationManager.areNotificationsEnabled()` 恒返回 true，
+  让小黑盒认为通知已开启，获得签到加成（不真正申请权限、不弹系统权限框）；双版本通用
 - 修复图片系统分享：图片改为优先保存到系统相册（MediaStore，可真正查看/分享），
   失败回退 FileProvider（外部缓存目录）；自动识别 jpg/png/gif/webp/bmp 真实格式并修正 MIME；
   下载请求带 UA/Referer 防 CDN 防盗链
 
-## 0.4.0
+## 0.3.2
 
 ### 双版本兼容（1.3.393 / 1.3.394）
 

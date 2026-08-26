@@ -83,19 +83,13 @@ public final class SettingsEntryHook {
         }
     }
 
-        private static final SettingsGroup[] SETTINGS_GROUPS = new SettingsGroup[]{
+        private static final SettingsGroup[] BASE_GROUPS = new SettingsGroup[]{
             new SettingsGroup("广告过滤", new SwitchDef[]{
                     new SwitchDef("屏蔽开屏广告", null, App.KEY_OPEN_SCREEN, true, false),
                     new SwitchDef("屏蔽信息流广告", null, App.KEY_FEED_AD, true, false),
                     new SwitchDef("屏蔽气泡广告", null, App.KEY_BUBBLE_AD, true, false),
                     new SwitchDef("屏蔽角标广告", null, App.KEY_CORNER_AD, true, false),
                     new SwitchDef("屏蔽推广贴", null, App.KEY_PROMOTE_AD, true, false),
-            }),
-            new SettingsGroup("底部导航栏隐藏", new SwitchDef[]{
-                    new SwitchDef("隐藏首页", null, App.KEY_HIDE_TAB_HOME, false, true),
-                    new SwitchDef("隐藏热点", null, App.KEY_HIDE_TAB_HOT, false, true),
-                    new SwitchDef("隐藏游戏库", null, App.KEY_HIDE_TAB_GAME, false, true),
-                    new SwitchDef("隐藏加号", null, App.KEY_HIDE_ADD, false, true),
             }),
             new SettingsGroup("解除复制", new SwitchDef[]{
                     new SwitchDef("解除复制", "恢复系统标准文本选择", App.KEY_COPY_POST, true, false),
@@ -108,10 +102,33 @@ public final class SettingsEntryHook {
                     new SwitchDef("游戏链接", "第三种分享类型：关注游戏", null, false, false, true, App.KEY_DAILY_TASK_CHANNEL),
             }),
             new SettingsGroup("通用", new SwitchDef[]{
+                    new SwitchDef("伪装通知权限", "让小黑盒认为通知已开启，获得签到加成（不真正申请权限）", App.KEY_FAKE_NOTIFICATION, false, false),
                     new SwitchDef("屏蔽更新", "屏蔽小黑盒更新入口", App.KEY_BLOCK_UPDATE, false, false),
                     new SwitchDef("记录日志", "开启后自动记录模块日志到文件", App.KEY_LOG, false, false),
             }),
     };
+
+    /** 底部导航栏隐藏分组：tab 名称按小黑盒字符串资源动态解析（版本自适应：发现/游戏库/社区/加号） */
+    private static SettingsGroup buildBottomTabGroup(Activity activity) {
+        String home = MainModule.getHeyboxTabLabel(activity, "discover", "发现");
+        String store = MainModule.getHeyboxTabLabel(activity, "game_store", "游戏库");
+        String bbs = MainModule.getHeyboxTabLabel(activity, "bbs", "社区");
+        return new SettingsGroup("底部导航栏隐藏", new SwitchDef[]{
+                new SwitchDef("隐藏「" + home + "」", null, App.KEY_HIDE_TAB_HOME, false, true),
+                new SwitchDef("隐藏「" + store + "」", null, App.KEY_HIDE_TAB_HOT, false, true),
+                new SwitchDef("隐藏「" + bbs + "」", null, App.KEY_HIDE_TAB_GAME, false, true),
+                new SwitchDef("隐藏「加号」", null, App.KEY_HIDE_ADD, false, true),
+        });
+    }
+
+    /** 完整分组列表（含动态底栏组） */
+    private static SettingsGroup[] getSettingsGroups(Activity activity) {
+        SettingsGroup[] base = BASE_GROUPS;
+        SettingsGroup[] all = new SettingsGroup[base.length + 1];
+        all[0] = buildBottomTabGroup(activity);
+        System.arraycopy(base, 0, all, 1, base.length);
+        return all;
+    }
     private void hookSettingsEntry(ClassLoader cl) {
         try {
             Class<?> clazz = Class.forName("com.max.xiaoheihe.module.account.GeneralSettingsActivity", false, cl);
@@ -305,7 +322,7 @@ public final class SettingsEntryHook {
             scroller.addView(box);
             page.addView(scroller);
 
-            for (SettingsGroup group : SETTINGS_GROUPS) {
+            for (SettingsGroup group : getSettingsGroups(activity)) {
                 View card = buildSectionCard(activity, cl, group);
                 if (card != null) {
                     box.addView(card);

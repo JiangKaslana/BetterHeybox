@@ -119,6 +119,37 @@ public class MainModule extends XposedModule {
         return def;
     }
 
+    /**
+     * 解析小黑盒底部导航 tab 名称：按字符串资源名读取（版本自适应，如 discover=发现 / game_store=游戏库）。
+     * 内嵌面板跑在小黑盒进程可直接取；独立设置页（模块进程）经 PackageManager 取应用资源。
+     *
+     * @param resName 字符串资源名
+     * @param def     解析失败时的兜底名
+     */
+    public static String getHeyboxTabLabel(Context context, String resName, String def) {
+        try {
+            android.content.res.Resources res = null;
+            int id = 0;
+            try {
+                res = context.getResources();
+                id = res.getIdentifier(resName, "string", TARGET_PKG);
+            } catch (Throwable ignored) {
+            }
+            if (id == 0) {
+                try {
+                    res = context.getPackageManager().getResourcesForApplication(TARGET_PKG);
+                    id = res.getIdentifier(resName, "string", TARGET_PKG);
+                } catch (Throwable ignored) {
+                }
+            }
+            if (id != 0 && res != null) {
+                return res.getString(id);
+            }
+        } catch (Throwable ignored) {
+        }
+        return def;
+    }
+
     /** 读取字符串开关：优先小黑盒进程本地配置，其次框架 RemotePreferences（模块设置页写入值） */
     public String getString(String key, String def) {
         if (HeyboxPrefs.contains(key)) {

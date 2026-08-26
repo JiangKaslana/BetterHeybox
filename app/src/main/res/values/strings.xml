@@ -11,9 +11,10 @@
     <string name="corner_ad">屏蔽角标广告</string>
     <string name="promote_ad">屏蔽推广贴</string>
     <string name="tab_section">底部导航栏屏蔽（重启生效）</string>
-    <string name="hide_tab_home">隐藏「首页」</string>
-    <string name="hide_tab_hot">隐藏「热点」</string>
-    <string name="hide_tab_game">隐藏「游戏库」</string>
+    <!-- 底栏 tab 名称运行时按小黑盒资源动态解析（发现/游戏库/社区），此处为兜底默认值 -->
+    <string name="hide_tab_home">隐藏「发现」</string>
+    <string name="hide_tab_hot">隐藏「游戏库」</string>
+    <string name="hide_tab_game">隐藏「社区」</string>
     <string name="hide_add">隐藏「加号」</string>
     <string name="post_section">帖子增强</string>
     <string name="copy_post">允许复制帖子正文</string>
@@ -30,6 +31,8 @@
     <string name="daily_task_channel">频道链接</string>
     <string name="daily_task_channel_desc">第三种分享类型：关注频道/游戏</string>
     <string name="daily_task_link_saved">已保存</string>
+    <string name="fake_notification">伪装通知权限</string>
+    <string name="fake_notification_desc">让小黑盒认为通知已开启，获得签到加成（不真正申请权限）</string>
     <string name="section_general">通用</string>
     <string name="block_update">屏蔽 Heybox 更新</string>
     <string name="block_update_desc">阻止版本更新提示和自动下载，默认关闭</string>

@@ -55,7 +55,19 @@ public class SettingsActivity extends Activity {
         bindSwitch(R.id.switch_corner_ad, App.KEY_CORNER_AD, true);
         bindSwitch(R.id.switch_promote_ad, App.KEY_PROMOTE_AD, true);
 
-        // 底部导航栏屏蔽（需重启小黑盒生效）
+        // 底部导航栏屏蔽（需重启小黑盒生效）；tab 名称按小黑盒资源动态解析（版本自适应）
+        TextView tabHome = findViewById(R.id.tv_tab_home);
+        if (tabHome != null) {
+            tabHome.setText("隐藏「" + MainModule.getHeyboxTabLabel(this, "discover", "首页") + "」");
+        }
+        TextView tabHot = findViewById(R.id.tv_tab_hot);
+        if (tabHot != null) {
+            tabHot.setText("隐藏「" + MainModule.getHeyboxTabLabel(this, "game_store", "热点") + "」");
+        }
+        TextView tabGame = findViewById(R.id.tv_tab_game);
+        if (tabGame != null) {
+            tabGame.setText("隐藏「" + MainModule.getHeyboxTabLabel(this, "bbs", "游戏库") + "」");
+        }
         bindRestartSwitch(R.id.switch_hide_tab_home, App.KEY_HIDE_TAB_HOME, false);
         bindRestartSwitch(R.id.switch_hide_tab_hot, App.KEY_HIDE_TAB_HOT, false);
         bindRestartSwitch(R.id.switch_hide_tab_game, App.KEY_HIDE_TAB_GAME, false);
@@ -72,6 +84,7 @@ public class SettingsActivity extends Activity {
         bindLinkRow(R.id.btn_daily_channel, R.string.daily_task_channel, App.KEY_DAILY_TASK_CHANNEL);
 
         // 通用
+        bindSwitch(R.id.switch_fake_notification, App.KEY_FAKE_NOTIFICATION, false);
         bindSwitch(R.id.switch_block_update, App.KEY_BLOCK_UPDATE, false);
         bindSwitch(R.id.switch_log, App.KEY_LOG, false);
 
@@ -151,6 +164,7 @@ public class SettingsActivity extends Activity {
             setChecked(R.id.switch_copy_post, App.KEY_COPY_POST, true);
             setChecked(R.id.switch_system_share, App.KEY_SYSTEM_SHARE, true);
             setChecked(R.id.switch_daily_task, App.KEY_DAILY_TASK_ENABLED, false);
+            setChecked(R.id.switch_fake_notification, App.KEY_FAKE_NOTIFICATION, false);
             setChecked(R.id.switch_block_update, App.KEY_BLOCK_UPDATE, false);
             setChecked(R.id.switch_log, App.KEY_LOG, false);
         } finally {

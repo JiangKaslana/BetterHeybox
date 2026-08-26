@@ -28,6 +28,32 @@ public final class GeneralHook {
     public void install(ClassLoader cl) {
         hookVersionNotice(cl);
         hookUpdateBlocking(cl);
+        hookFakeNotification(cl);
+    }
+
+    /**
+     * 伪装授予小黑盒通知权限：Hook 框架 {@code NotificationManager.areNotificationsEnabled()}
+     * 恒返回 true（开关开启时）。
+     *
+     * <p>小黑盒通过 {@code NotificationManagerCompat.from(ctx).areNotificationsEnabled()}
+     * （混淆类 androidx.core.app.m2）判断通知是否开启，签到/加成时给予额外奖励；
+     * compat 在 API 24+ 内部最终调用框架 {@code NotificationManager.areNotificationsEnabled()}，
+     * 故 hook 框架方法即可全局生效、跨版本稳定。</p>
+     */
+    private void hookFakeNotification(ClassLoader cl) {
+        try {
+            Class<?> nm = Class.forName("android.app.NotificationManager", false, cl);
+            Method m = nm.getDeclaredMethod("areNotificationsEnabled");
+            module.hook(m).intercept(chain -> {
+                if (module.isEnabled(App.KEY_FAKE_NOTIFICATION, false)) {
+                    return Boolean.TRUE;
+                }
+                return chain.proceed();
+            });
+            module.logd(Log.INFO, module.TAG, "✔ 伪装通知权限 Hook 已安装");
+        } catch (Throwable t) {
+            module.logd(Log.ERROR, module.TAG, "✘ 伪装通知权限 Hook 失败", t);
+        }
     }
 
     private static final AtomicBoolean VERSION_NOTICE_SHOWN = new AtomicBoolean(false);

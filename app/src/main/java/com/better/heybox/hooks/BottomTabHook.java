@@ -1,8 +1,8 @@
 package com.better.heybox.hooks;
 
+import android.app.Activity;
 import android.util.Log;
 import android.view.View;
-import android.view.ViewGroup;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -109,7 +109,7 @@ public final class BottomTabHook {
         try {
             Object binding = findViewBinding(activityObj);
             if (binding == null) {
-                module.logd(Log.WARN, module.TAG, "未找到 ViewBinding 字段（fi.i1）");
+                module.logd(Log.WARN, module.TAG, "未找到 ViewBinding 字段（fi.i1 / hi.i1）");
                 return;
             }
             // 诊断：打印 hook 侧读到的开关值
@@ -118,16 +118,23 @@ public final class BottomTabHook {
                     + " game=" + module.isEnabled(App.KEY_HIDE_TAB_GAME, false)
                     + " add=" + module.isEnabled(App.KEY_HIDE_ADD, false));
             boolean anyTabHidden = false;
+            // tab 名称按小黑盒资源动态解析（版本自适应：发现/游戏库/社区）
+            String labelHome = MainModule.getHeyboxTabLabel(
+                    activityObj instanceof Activity ? (Activity) activityObj : null, "discover", "发现");
+            String labelHot = MainModule.getHeyboxTabLabel(
+                    activityObj instanceof Activity ? (Activity) activityObj : null, "game_store", "游戏库");
+            String labelBbs = MainModule.getHeyboxTabLabel(
+                    activityObj instanceof Activity ? (Activity) activityObj : null, "bbs", "社区");
             if (module.isEnabled(App.KEY_HIDE_TAB_HOME, false)) {
-                hideTabField(binding, "j", "首页");
+                hideTabField(binding, "j", labelHome);
                 anyTabHidden = true;
             }
             if (module.isEnabled(App.KEY_HIDE_TAB_HOT, false)) {
-                hideTabField(binding, "k", "热点");
+                hideTabField(binding, "k", labelHot);
                 anyTabHidden = true;
             }
             if (module.isEnabled(App.KEY_HIDE_TAB_GAME, false)) {
-                hideTabField(binding, "m", "游戏库");
+                hideTabField(binding, "m", labelBbs);
                 anyTabHidden = true;
             }
             // 加号：独立开关，或隐藏了任意 tab 时联动隐藏（保持底栏布局对称）
