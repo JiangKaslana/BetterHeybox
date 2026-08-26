@@ -57,6 +57,7 @@ public final class SettingsEntryHook {
         final boolean restart;
         final boolean clickRow;
         final String editKey; // clickRow 时编辑的字符串配置 key（null 则不弹编辑框）
+        final boolean actionClearDaily;
         SwitchDef(String title, String desc, String key, boolean def, boolean restart) {
             this(title, desc, key, def, restart, false, null);
         }
