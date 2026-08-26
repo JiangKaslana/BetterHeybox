@@ -535,6 +535,20 @@ public final class SettingsEntryHook {
             return fallback;
         }
     }
+
+    /** 关闭原生弹窗：按钮回调参数 [0] 为 DialogInterface，小黑盒 HeyBoxDialog 需手动 dismiss */
+    private static void dismissDialog(Object[] args) {
+        if (args == null || args.length == 0) {
+            return;
+        }
+        try {
+            if (args[0] instanceof DialogInterface) {
+                ((DialogInterface) args[0]).dismiss();
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     private void showEditLinkDialog(final Activity activity, final String title, final String key) {
         try {
             ClassLoader cl = activity.getClassLoader();
@@ -584,11 +598,17 @@ public final class SettingsEntryHook {
                             } catch (Throwable t) {
                                 module.logd(Log.WARN, module.TAG, "保存分享链接失败: " + t);
                             }
+                            dismissDialog(args);
                         }
                         return null;
                     });
             Object cancelListener = java.lang.reflect.Proxy.newProxyInstance(
-                    cl, new Class<?>[]{onClickCls}, (proxy, method, args) -> null);
+                    cl, new Class<?>[]{onClickCls}, (proxy, method, args) -> {
+                        if ("onClick".equals(method.getName())) {
+                            dismissDialog(args);
+                        }
+                        return null;
+                    });
             builderCls.getMethod("x", CharSequence.class, onClickCls).invoke(builder, "保存", saveListener);
             builderCls.getMethod("r", CharSequence.class, onClickCls).invoke(builder, "取消", cancelListener);
             builderCls.getMethod("J").invoke(builder);
