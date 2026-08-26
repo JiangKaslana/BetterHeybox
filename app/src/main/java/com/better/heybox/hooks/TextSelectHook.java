@@ -89,18 +89,7 @@ public final class TextSelectHook {
                 try {
                     Object arg = chain.getArg(0);
                     if (arg instanceof View) {
-                        final View content = (View) arg;
-                        // 等布局稳定后恢复标准文本选择
-                        content.postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                try {
-                                    enablePostTextSelect(content);
-                                } catch (Throwable t) {
-                                    module.logd(Log.WARN, module.TAG, "正文选择设置异常: " + t);
-                                }
-                            }
-                        }, 300);
+                        scheduleEnableTextSelect((View) arg, 0);
                     }
                 } catch (Throwable t) {
                     module.logd(Log.WARN, module.TAG, "正文选择调度异常: " + t);
@@ -111,6 +100,32 @@ public final class TextSelectHook {
         } catch (Throwable t) {
             module.logd(Log.ERROR, module.TAG, "✘ 帖子正文复制 Hook 失败", t);
         }
+    }
+
+    /**
+     * 等布局稳定后恢复标准文本选择。
+     *
+     * 长文正文渲染较慢，固定延时可能打断渲染导致文字短暂消失；
+     * 改为「布局就绪（已显示且有尺寸）才应用」，未就绪则短间隔重试，最长约 3 秒。
+     */
+    private void scheduleEnableTextSelect(final View content, final int attempt) {
+        if (attempt > 15) {
+            return; // 约 3 秒仍未就绪则放弃，避免无限重试
+        }
+        content.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (content.isShown() && content.getWidth() > 0 && content.getHeight() > 0) {
+                        enablePostTextSelect(content);
+                    } else {
+                        scheduleEnableTextSelect(content, attempt + 1);
+                    }
+                } catch (Throwable t) {
+                    module.logd(Log.WARN, module.TAG, "正文选择调度异常: " + t);
+                }
+            }
+        }, attempt == 0 ? 200 : 150);
     }
 
     /** 恢复标题/正文 TextView 的系统标准文本选择 */
@@ -129,6 +144,12 @@ public final class TextSelectHook {
                 View v = root.findViewById(id);
                 if (v instanceof TextView) {
                     TextView tv = (TextView) v;
+                    // 幂等：已开启且 movement method 已是 LinkMovementMethod 则跳过，
+                    // 避免重复 setTextIsSelectable 触发长文重排闪烁
+                    if (tv.isTextSelectable()
+                            && tv.getMovementMethod() instanceof LinkMovementMethod) {
+                        continue;
+                    }
                     tv.setTextIsSelectable(true);
                     tv.setLinksClickable(true);
                     tv.setMovementMethod(LinkMovementMethod.getInstance());

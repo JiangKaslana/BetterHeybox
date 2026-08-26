@@ -27,6 +27,11 @@
 - 修复图片系统分享：图片改为优先保存到系统相册（MediaStore，可真正查看/分享），
   失败回退 FileProvider（外部缓存目录）；自动识别 jpg/png/gif/webp/bmp 真实格式并修正 MIME；
   下载请求带 UA/Referer 防 CDN 防盗链
+- 修复长文正文进入时**文字短暂消失**：解除复制的 `setTextIsSelectable(true)` 会重建 Editor 并触发长文
+  Spannable 重排导致闪烁；改为「布局就绪（已显示且有尺寸）才应用 + 幂等跳过已开启的 TextView」
+- 底栏 tab 名称改为**版本自适应**：按小黑盒字符串资源（discover/game_store/bbs）运行时动态解析
+  （发现/游戏库/社区），内嵌面板/独立设置页/Hook 日志统一显示真实 tab 名
+- 修复原生 HeyBoxDialog 链接编辑弹窗「保存/取消」不关闭：按钮回调需手动 `dialogInterface.dismiss()`
 
 ## 0.3.2
 
