@@ -15,11 +15,13 @@ import com.better.heybox.MainModule;
  */
 public final class BottomTabHook {
 
-    private final MainModule m;
+    private final MainModule module;
 
     public BottomTabHook(MainModule module) {
-        this.m = module;
+        this.module = module;
     }
+
+    /** 安装本模块的全部 Hook */
     public void install(ClassLoader cl) {
         hookBottomTabs(cl);
     }
@@ -28,32 +30,32 @@ public final class BottomTabHook {
         try {
             Class<?> clazz = Class.forName("com.max.xiaoheihe.MainActivity", false, cl);
             Method onCreate = clazz.getDeclaredMethod("onCreate", android.os.Bundle.class);
-            m.hook(onCreate).intercept(chain -> {
+            module.hook(onCreate).intercept(chain -> {
                 Object result = chain.proceed(); // 先执行原 onCreate
                 try {
                     applyBottomTabSettings(chain.getThisObject());
                 } catch (Throwable t) {
-                    m.logd(Log.ERROR, m.TAG, "应用底部导航栏设置异常", t);
+                    module.logd(Log.ERROR, module.TAG, "应用底部导航栏设置异常", t);
                 }
                 return result;
             });
-            m.logd(Log.INFO, m.TAG, "✔ 底部导航栏 Hook 已安装");
+            module.logd(Log.INFO, module.TAG, "✔ 底部导航栏 Hook 已安装");
 
             // hook onResume：热重载后切回小黑盒立即重新应用底栏设置
             try {
                 Method onResume = clazz.getDeclaredMethod("onResume");
-                m.hook(onResume).intercept(chain -> {
+                module.hook(onResume).intercept(chain -> {
                     Object result = chain.proceed();
                     try {
                         applyBottomTabSettings(chain.getThisObject());
                     } catch (Throwable t) {
-                        m.logd(Log.WARN, m.TAG, "onResume 应用底栏设置失败: " + t);
+                        module.logd(Log.WARN, module.TAG, "onResume 应用底栏设置失败: " + t);
                     }
                     return result;
                 });
-                m.logd(Log.INFO, m.TAG, "✔ 底栏 onResume Hook 已安装");
+                module.logd(Log.INFO, module.TAG, "✔ 底栏 onResume Hook 已安装");
             } catch (Throwable t) {
-                m.logd(Log.WARN, m.TAG, "底栏 onResume Hook 失败: " + t);
+                module.logd(Log.WARN, module.TAG, "底栏 onResume Hook 失败: " + t);
             }
 
             // 加号/底栏会被 MainActivity$j.b(Boolean) 生命周期回调重新 setVisibility(0) 显示，
@@ -63,7 +65,7 @@ public final class BottomTabHook {
                 for (Method m : observerCls.getDeclaredMethods()) {
                     if ("b".equals(m.getName()) && m.getParameterTypes().length == 1
                             && m.getParameterTypes()[0] == Boolean.class) {
-                        m.hook(m).intercept(chain -> {
+                        module.hook(m).intercept(chain -> {
                             Object result = chain.proceed();
                             try {
                                 Object mainActivity = findOuterInstance(chain.getThisObject(), cl);
@@ -71,19 +73,19 @@ public final class BottomTabHook {
                                     applyBottomTabSettings(mainActivity);
                                 }
                             } catch (Throwable t) {
-                                m.logd(Log.WARN, m.TAG, "底栏状态回调后重新隐藏失败: " + t);
+                                module.logd(Log.WARN, module.TAG, "底栏状态回调后重新隐藏失败: " + t);
                             }
                             return result;
                         });
-                        m.logd(Log.INFO, m.TAG, "✔ 底栏状态回调 Hook 已安装");
+                        module.logd(Log.INFO, module.TAG, "✔ 底栏状态回调 Hook 已安装");
                         break;
                     }
                 }
             } catch (Throwable t) {
-                m.logd(Log.WARN, m.TAG, "底栏状态回调 Hook 安装失败: " + t);
+                module.logd(Log.WARN, module.TAG, "底栏状态回调 Hook 安装失败: " + t);
             }
         } catch (Throwable t) {
-            m.logd(Log.ERROR, m.TAG, "✘ 底部导航栏 Hook 失败", t);
+            module.logd(Log.ERROR, module.TAG, "✘ 底部导航栏 Hook 失败", t);
         }
     }
 
@@ -97,7 +99,7 @@ public final class BottomTabHook {
                 }
             }
         } catch (Throwable t) {
-            m.logd(Log.WARN, m.TAG, "查找外部 MainActivity 实例失败: " + t);
+            module.logd(Log.WARN, module.TAG, "查找外部 MainActivity 实例失败: " + t);
         }
         return null;
     }
@@ -107,35 +109,35 @@ public final class BottomTabHook {
         try {
             Object binding = findViewBinding(activityObj);
             if (binding == null) {
-                m.logd(Log.WARN, m.TAG, "未找到 ViewBinding 字段（fi.i1）");
+                module.logd(Log.WARN, module.TAG, "未找到 ViewBinding 字段（fi.i1）");
                 return;
             }
             // 诊断：打印 hook 侧读到的开关值
-            m.logd(Log.INFO, m.TAG, "开关值: home=" + m.isEnabled(App.KEY_HIDE_TAB_HOME, false)
-                    + " hot=" + m.isEnabled(App.KEY_HIDE_TAB_HOT, false)
-                    + " game=" + m.isEnabled(App.KEY_HIDE_TAB_GAME, false)
-                    + " add=" + m.isEnabled(App.KEY_HIDE_ADD, false));
+            module.logd(Log.INFO, module.TAG, "开关值: home=" + module.isEnabled(App.KEY_HIDE_TAB_HOME, false)
+                    + " hot=" + module.isEnabled(App.KEY_HIDE_TAB_HOT, false)
+                    + " game=" + module.isEnabled(App.KEY_HIDE_TAB_GAME, false)
+                    + " add=" + module.isEnabled(App.KEY_HIDE_ADD, false));
             boolean anyTabHidden = false;
-            if (m.isEnabled(App.KEY_HIDE_TAB_HOME, false)) {
+            if (module.isEnabled(App.KEY_HIDE_TAB_HOME, false)) {
                 hideTabField(binding, "j", "首页");
                 anyTabHidden = true;
             }
-            if (m.isEnabled(App.KEY_HIDE_TAB_HOT, false)) {
+            if (module.isEnabled(App.KEY_HIDE_TAB_HOT, false)) {
                 hideTabField(binding, "k", "热点");
                 anyTabHidden = true;
             }
-            if (m.isEnabled(App.KEY_HIDE_TAB_GAME, false)) {
+            if (module.isEnabled(App.KEY_HIDE_TAB_GAME, false)) {
                 hideTabField(binding, "m", "游戏库");
                 anyTabHidden = true;
             }
             // 加号：独立开关，或隐藏了任意 tab 时联动隐藏（保持底栏布局对称）
-            if (m.isEnabled(App.KEY_HIDE_ADD, false) || anyTabHidden) {
+            if (module.isEnabled(App.KEY_HIDE_ADD, false) || anyTabHidden) {
                 hideTabField(binding, "r", "加号");
                 // 同时去掉「推荐」占位（rb_3 默认 INVISIBLE 占位），让剩余 tab 完全等分
                 hideTabField(binding, "l", "推荐占位");
             }
         } catch (Throwable t) {
-            m.logd(Log.WARN, m.TAG, "底部导航栏设置应用失败: " + t);
+            module.logd(Log.WARN, module.TAG, "底部导航栏设置应用失败: " + t);
         }
     }
 
@@ -148,7 +150,7 @@ public final class BottomTabHook {
                 }
             }
         } catch (Throwable t) {
-            m.logd(Log.WARN, m.TAG, "查找 ViewBinding 失败: " + t);
+            module.logd(Log.WARN, module.TAG, "查找 ViewBinding 失败: " + t);
         }
         return null;
     }
@@ -156,10 +158,10 @@ public final class BottomTabHook {
     private void dumpFields(Object obj) {
         try {
             for (Field f : obj.getClass().getDeclaredFields()) {
-                m.logd(Log.WARN, m.TAG, "  field: " + f.getName() + " : " + f.getType().getName());
+                module.logd(Log.WARN, module.TAG, "  field: " + f.getName() + " : " + f.getType().getName());
             }
         } catch (Throwable t) {
-            m.logd(Log.WARN, m.TAG, "转储字段失败: " + t);
+            module.logd(Log.WARN, module.TAG, "转储字段失败: " + t);
         }
     }
 
@@ -191,10 +193,10 @@ public final class BottomTabHook {
                         v.setVisibility(View.GONE);
                     }
                 }, 3000);
-                m.logd(Log.INFO, m.TAG, "隐藏 " + label + ": " + v.getVisibility());
+                module.logd(Log.INFO, module.TAG, "隐藏 " + label + ": " + v.getVisibility());
             }
         } catch (Throwable t) {
-            m.logd(Log.WARN, m.TAG, "隐藏 tab 失败 (" + label + ")，字段 " + fieldName + " 可能被 Robust 重命名，转储字段名：");
+            module.logd(Log.WARN, module.TAG, "隐藏 tab 失败 (" + label + ")，字段 " + fieldName + " 可能被 Robust 重命名，转储字段名：");
             dumpFields(binding);
         }
     }
