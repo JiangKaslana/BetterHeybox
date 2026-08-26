@@ -3,7 +3,6 @@ package com.better.heybox;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlertDialog;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -21,8 +20,18 @@ import io.github.libxposed.service.XposedService;
 /**
  * BetterHeybox 设置界面（分组卡片样式）。
  * 开关状态写入 RemotePreferences（经 LSPosed 框架跨进程同步到 Hook 侧）。
+ *
+ * <p>修复「模块进程未运行时切换开关无效」：开关读写统一走 {@link App#readBoolean}/{@link App#writeBoolean}，
+ * 框架服务未连接时写入本地待提交缓存，服务绑定后自动补交；服务绑定后刷新开关显示。</p>
  */
 public class SettingsActivity extends Activity {
+
+    /** 服务未连接时用户已手动切换过（防止服务绑定后刷新覆盖用户刚切的值） */
+    private boolean mDirty;
+    /** 程序化刷新开关时抑制监听回调 */
+    private boolean mRefreshing;
+
+    private TextView mLogPathView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,6 +44,7 @@ public class SettingsActivity extends Activity {
             versionFooter.setText(getString(R.string.version_footer,
                     VersionUtils.getVersionName(this)));
         }
+        mLogPathView = findViewById(R.id.log_path);
 
         // 广告过滤（即时生效）
         bindSwitch(R.id.switch_open_screen, App.KEY_OPEN_SCREEN, true);
@@ -55,6 +65,7 @@ public class SettingsActivity extends Activity {
 
         // 通用
         bindSwitch(R.id.switch_block_update, App.KEY_BLOCK_UPDATE, false);
+        bindSwitch(R.id.switch_log, App.KEY_LOG, false);
 
         // 退出按钮：关闭设置界面
         findViewById(R.id.btn_exit).setOnClickListener(new View.OnClickListener() {
@@ -63,21 +74,37 @@ public class SettingsActivity extends Activity {
                 finish();
             }
         });
+
+        refreshAll();
+        updateLogPath();
+
+        // 框架服务绑定后刷新开关显示（用户已手动切过则跳过，避免覆盖）
+        App.addOnServiceBoundListener(new App.OnServiceBoundListener() {
+            @Override
+            public void onServiceBound() {
+                if (!mDirty) {
+                    refreshAll();
+                }
+                updateLogPath();
+            }
+        });
     }
 
     private void bindSwitch(int switchId, final String key, boolean defaultValue) {
         final Switch sw = findViewById(switchId);
-        SharedPreferences prefs = App.getPrefs();
-        sw.setChecked(prefs != null ? prefs.getBoolean(key, defaultValue) : defaultValue);
+        sw.setChecked(App.readBoolean(key, defaultValue));
         sw.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                SharedPreferences p = App.getPrefs();
-                if (p == null) {
-                    Toast.makeText(SettingsActivity.this, R.string.service_not_ready, Toast.LENGTH_SHORT).show();
+                if (mRefreshing) {
                     return;
                 }
-                p.edit().putBoolean(key, isChecked).apply();
+                mDirty = true;
+                App.writeBoolean(key, isChecked);
+                LogRecorder.recordEvent("设置页开关切换: key=" + key + ", value=" + isChecked);
+                if (sw.getId() == R.id.switch_log) {
+                    updateLogPath();
+                }
             }
         });
     }
@@ -85,20 +112,68 @@ public class SettingsActivity extends Activity {
     /** 需要重启小黑盒才生效的开关（底栏屏蔽），切换后弹「重启后生效」提示 */
     private void bindRestartSwitch(int switchId, final String key, boolean defaultValue) {
         final Switch sw = findViewById(switchId);
-        SharedPreferences prefs = App.getPrefs();
-        sw.setChecked(prefs != null ? prefs.getBoolean(key, defaultValue) : defaultValue);
+        sw.setChecked(App.readBoolean(key, defaultValue));
         sw.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                SharedPreferences p = App.getPrefs();
-                if (p == null) {
-                    Toast.makeText(SettingsActivity.this, R.string.service_not_ready, Toast.LENGTH_SHORT).show();
+                if (mRefreshing) {
                     return;
                 }
-                p.edit().putBoolean(key, isChecked).apply();
+                mDirty = true;
+                App.writeBoolean(key, isChecked);
+                LogRecorder.recordEvent("设置页开关切换(重启生效): key=" + key + ", value=" + isChecked);
                 showRestartDialog();
             }
         });
+    }
+
+    /** 重新读取所有开关状态并回填 UI（不触发监听回调） */
+    private void refreshAll() {
+        mRefreshing = true;
+        try {
+            setChecked(R.id.switch_open_screen, App.KEY_OPEN_SCREEN, true);
+            setChecked(R.id.switch_feed_ad, App.KEY_FEED_AD, true);
+            setChecked(R.id.switch_bubble_ad, App.KEY_BUBBLE_AD, true);
+            setChecked(R.id.switch_corner_ad, App.KEY_CORNER_AD, true);
+            setChecked(R.id.switch_promote_ad, App.KEY_PROMOTE_AD, true);
+            setChecked(R.id.switch_hide_tab_home, App.KEY_HIDE_TAB_HOME, false);
+            setChecked(R.id.switch_hide_tab_hot, App.KEY_HIDE_TAB_HOT, false);
+            setChecked(R.id.switch_hide_tab_game, App.KEY_HIDE_TAB_GAME, false);
+            setChecked(R.id.switch_hide_add, App.KEY_HIDE_ADD, false);
+            setChecked(R.id.switch_copy_post, App.KEY_COPY_POST, true);
+            setChecked(R.id.switch_system_share, App.KEY_SYSTEM_SHARE, true);
+            setChecked(R.id.switch_block_update, App.KEY_BLOCK_UPDATE, false);
+            setChecked(R.id.switch_log, App.KEY_LOG, false);
+        } finally {
+            mRefreshing = false;
+        }
+    }
+
+    private void setChecked(int switchId, String key, boolean defaultValue) {
+        Switch sw = findViewById(switchId);
+        if (sw != null) {
+            sw.setChecked(App.readBoolean(key, defaultValue));
+        }
+    }
+
+    /** 显示日志文件路径（仅模块进程侧文件；小黑盒进程日志在其应用目录） */
+    private void updateLogPath() {
+        if (mLogPathView == null) {
+            return;
+        }
+        Switch sw = findViewById(R.id.switch_log);
+        boolean enabled = sw != null && sw.isChecked();
+        if (!enabled) {
+            mLogPathView.setVisibility(View.GONE);
+            return;
+        }
+        String path = LogRecorder.getLogFilePath();
+        if (path != null) {
+            mLogPathView.setText(getString(R.string.log_file_path, path));
+            mLogPathView.setVisibility(View.VISIBLE);
+        } else {
+            mLogPathView.setVisibility(View.GONE);
+        }
     }
 
     /** 「重启后生效」弹窗（模仿小黑盒 DNS 设置的「重新启动APP生效」交互） */

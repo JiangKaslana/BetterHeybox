@@ -2,6 +2,37 @@
 
 本项目版本号采用 `v主版本.次版本.修订版本` 格式。推送代码时，CI 会构建带日期和当日序号的版本并将 APK 保存在 Action 成品中；Release 工作流手动输入版本号后创建正式 Release，并在说明中列出 commit 更新内容。
 
+## 0.3.1
+
+### 工程重构：按功能拆分 Hook
+- `MainModule.java` 精简为入口：生命周期 + Hook 安装编排 + 共享工具（开关读取 / 日志 / dp）
+- 各功能 Hook 拆分到 `hooks/` 子包：
+  - `GeneralHook`      通用（版本检测 / 屏蔽更新）
+  - `AdFilterHook`     广告过滤（开屏 / 信息流 / 气泡 / 角标）
+  - `SettingsEntryHook` 设置页入口注入 + 内嵌设置面板
+  - `BottomTabHook`    底部导航栏隐藏
+  - `PromotePostHook`  推广贴屏蔽
+  - `TextSelectHook`   解除复制 / 标准文本选择 / 跨行选择
+  - `ImageShareHook`   图片系统分享
+
+### 界面
+- 小黑盒内嵌设置面板底部新增版本号显示（读模块 APK versionName，与独立设置页一致）
+
+### 日志开关
+- 新增「记录日志」开关（内嵌设置面板与独立设置页均可切换，默认关闭）
+- 开启后自动把模块运行日志写入文件：
+  小黑盒进程 `/data/data/com.max.xiaoheihe/files/betterheybox/log.txt`，
+  模块进程 `/data/data/com.better.heybox/files/betterheybox/log.txt`，
+  单文件超 512KB 自动滚动为 log.1.txt
+- 独立设置页开启开关后显示日志文件路径
+
+### 架构调整：小黑盒内设置不再跨进程
+- 内嵌设置面板开关改由**本进程直读直写**，配置文件存放在小黑盒应用目录：
+  `/data/user/0/com.max.xiaoheihe/shared_prefs/betterheybox.xml`
+- 保留可用通道：小黑盒内面板走本进程本地配置；模块独立设置页继续直连框架
+  RemotePreferences（实测可用），两条通道各自即时生效
+- 不再依赖「广播 → 模块进程 → RemotePreferences」写回链
+
 ## 0.2.1
 
 ### 内嵌设置与主题

@@ -1,0 +1,117 @@
+package com.better.heybox.hooks;
+
+import android.app.Activity;
+import android.content.pm.PackageInfo;
+import android.util.Log;
+import android.view.View;
+import android.widget.Toast;
+
+import java.lang.reflect.Method;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import com.better.heybox.App;
+import com.better.heybox.MainModule;
+import com.better.heybox.LogRecorder;
+
+/**
+ * 通用功能：Heybox 版本前置检测提示 + 屏蔽更新入口。
+ */
+public final class GeneralHook {
+
+    private final MainModule module;
+
+    public GeneralHook(MainModule module) {
+        this.module = module;
+    }
+
+    /** 安装本模块的全部 Hook */
+    public void install(ClassLoader cl) {
+        hookVersionNotice(cl);
+        hookUpdateBlocking(cl);
+    }
+
+    private static final AtomicBoolean VERSION_NOTICE_SHOWN = new AtomicBoolean(false);
+
+    private void hookVersionNotice(ClassLoader cl) {
+        try {
+            Class<?> baseActivity = Class.forName(
+                    "com.max.hbcommon.base.BaseActivity", false, cl);
+            Method onResume = baseActivity.getDeclaredMethod("onResume");
+            module.hook(onResume).intercept(chain -> {
+                Object result = chain.proceed();
+                Object self = chain.getThisObject();
+                if (self instanceof Activity) {
+                    Activity activity = (Activity) self;
+                    View decor = activity.getWindow().getDecorView();
+                    decor.postDelayed(() -> showVersionNotice(activity, cl), 600L);
+                }
+                return result;
+            });
+            module.logd(Log.INFO, module.TAG, "✔ Heybox 版本检测 Hook 已安装");
+        } catch (Throwable t) {
+            module.logd(Log.ERROR, module.TAG, "✘ Heybox 版本检测 Hook 失败", t);
+        }
+    }
+
+    private void showVersionNotice(Activity activity, ClassLoader cl) {
+        LogRecorder.setContext(activity);
+        if (activity.isFinishing() || VERSION_NOTICE_SHOWN.get()) {
+            return;
+        }
+        String version = "unknown";
+        try {
+            PackageInfo info = activity.getPackageManager().getPackageInfo(MainModule.TARGET_PKG, 0);
+            if (info.versionName != null) {
+                version = info.versionName;
+            }
+        } catch (Throwable t) {
+            module.logd(Log.WARN, module.TAG, "读取 Heybox 版本失败", t);
+            return;
+        }
+        if (MainModule.TARGET_HEYBOX_VERSION.equals(version)
+                || !VERSION_NOTICE_SHOWN.compareAndSet(false, true)) {
+            return;
+        }
+
+        String message = "BetterHeybox 目标版本为 Heybox " + MainModule.TARGET_HEYBOX_VERSION
+                + "，当前检测到 " + version;
+        try {
+            Class<?> toastUtil = Class.forName("com.max.hbutils.utils.f", false, cl);
+            Method showBottomHint = toastUtil.getDeclaredMethod("d", String.class);
+            showBottomHint.invoke(null, message);
+        } catch (Throwable t) {
+            Toast.makeText(activity.getApplicationContext(), message, Toast.LENGTH_LONG).show();
+        }
+        module.logd(Log.WARN, module.TAG, message);
+    }
+
+    private void hookUpdateBlocking(ClassLoader cl) {
+        try {
+            Class<?> manager = Class.forName(
+                    "com.max.xiaoheihe.utils.AppUpdateManager", false, cl);
+            Method updateEntry = null;
+            for (Method method : manager.getDeclaredMethods()) {
+                if ("P".equals(method.getName())
+                        && method.getParameterCount() == 1
+                        && method.getParameterTypes()[0] == Boolean.class) {
+                    updateEntry = method;
+                    break;
+                }
+            }
+            if (updateEntry == null) {
+                module.logd(Log.WARN, module.TAG, "✘ 未找到 AppUpdateManager.P(Boolean)");
+                return;
+            }
+            module.hook(updateEntry).intercept(chain -> {
+                if (module.isEnabled(App.KEY_BLOCK_UPDATE, false)) {
+                    module.logd(Log.INFO, module.TAG, "已屏蔽 Heybox 更新入口 AppUpdateManager.P()");
+                    return chain.getThisObject();
+                }
+                return chain.proceed();
+            });
+            module.logd(Log.INFO, module.TAG, "✔ Heybox 更新屏蔽 Hook 已安装");
+        } catch (Throwable t) {
+            module.logd(Log.ERROR, module.TAG, "✘ Heybox 更新屏蔽 Hook 失败", t);
+        }
+    }
+}

@@ -23,6 +23,9 @@
     <string name="section_general">通用</string>
     <string name="block_update">屏蔽 Heybox 更新</string>
     <string name="block_update_desc">阻止版本更新提示和自动下载，默认关闭</string>
+    <string name="log_switch">记录日志</string>
+    <string name="log_switch_desc">开启后自动记录模块日志到文件，便于排查问题</string>
+    <string name="log_file_path">日志文件：%1$s</string>
     <!-- %1$s 由 APK Manifest 的 versionName 提供，CI/Release 构建时自动同步 -->
     <string name="version_footer">BetterHeybox %1$s</string>
     <string name="exit">退出</string>

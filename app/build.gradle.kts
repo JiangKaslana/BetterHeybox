@@ -23,7 +23,7 @@ android {
         targetSdk = 37
         // 版本号统一在 gradle.properties 管理（versionCode 递增决定升级判定）
         versionCode = (project.findProperty("VERSION_CODE") as String? ?: "1").toInt()
-        versionName = project.findProperty("VERSION_NAME") as String? ?: "v0.2.0"
+        versionName = project.findProperty("VERSION_NAME") as String? ?: "v0.3.1"
     }
 
     signingConfigs {

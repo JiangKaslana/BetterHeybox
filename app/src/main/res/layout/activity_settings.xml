@@ -443,7 +443,58 @@
                 android:layout_height="1px"
                 android:background="@color/settings_divider" />
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingVertical="10dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/log_switch"
+                        android:textSize="16sp"
+                        android:textColor="?android:attr/textColorPrimary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/log_switch_desc"
+                        android:textSize="12sp"
+                        android:textColor="?android:attr/textColorSecondary" />
+                </LinearLayout>
+
+                <Switch
+                    android:id="@+id/switch_log"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1px"
+                android:background="@color/settings_divider" />
+
         </LinearLayout>
+
+        <!-- 日志文件路径（开关开启时显示） -->
+        <TextView
+            android:id="@+id/log_path"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:textSize="11sp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:visibility="gone" />
 
         <!-- 退出按钮（M3 Filled Button 风格） -->
         <Button

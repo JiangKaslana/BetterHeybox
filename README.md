@@ -8,8 +8,11 @@
 ## 功能
 
 所有功能开关均可在小黑盒「我的 → 设置 → 通用设置」中的 `BetterHeybox 设置` 入口直接打开模块面板，
-也可以从模块独立设置页进行修改。开关经 LSPosed **RemotePreferences** 跨进程同步，
-广告屏蔽、复制和系统分享开关即时生效。
+也可以从模块独立设置页进行修改。开关配置存放在**小黑盒应用目录**
+（`/data/data/com.max.xiaoheihe/shared_prefs/betterheybox.xml`），
+小黑盒内的设置面板**直读直写本进程配置，不跨进程**——即使模块进程未运行、
+部分系统拦截跨进程广播，开关也立即生效且重启保留；
+模块独立设置页仍经框架 RemotePreferences 同步（直连框架，跨系统可用）。
 
 ### 广告过滤
 
@@ -43,13 +46,21 @@
 
 - **版本前置检测**：检测小黑盒是否为目标版本 `1.3.393`，不匹配时显示提示
 - **屏蔽更新**：提供可选开关，屏蔽小黑盒更新入口
+- **记录日志**：提供「记录日志」开关，开启后自动把模块运行日志写入文件
+  （小黑盒进程：`/data/data/com.max.xiaoheihe/files/betterheybox/log.txt`；
+  模块进程：`/data/data/com.better.heybox/files/betterheybox/log.txt`），
+  单文件超 512KB 自动滚动，便于离线排查问题
 
 ### 设置开关
 
 - **广告过滤**：屏蔽开屏、信息流、气泡、角标广告和推广贴
 - **底部导航栏隐藏**：隐藏首页、热点、游戏库或加号（需要重启小黑盒）
 - **帖子增强**：解除正文复制限制、启用图片系统分享
-- **通用**：屏蔽小黑盒更新入口
+- **通用**：屏蔽小黑盒更新入口、记录日志（开启后自动记录模块日志到文件）
+- **小黑盒内设置面板不再跨进程**：开关直接读写小黑盒目录的配置文件
+  （`shared_prefs/betterheybox.xml`），模块进程未运行 / 框架服务未连接 /
+  系统拦截跨进程广播时同样即时生效并持久保留；
+  同时尽力镜像到 RemotePreferences 供模块独立设置页读取（镜像失败不影响小黑盒内生效）
 
 ## 技术栈
 
@@ -69,9 +80,20 @@
 app/src/main/
 ├── AndroidManifest.xml          # 模块名/描述 = android:label / android:description
 ├── java/com/better/heybox/
-│   ├── MainModule.java          # 模块入口
+│   ├── MainModule.java          # 模块入口：生命周期 + Hook 安装编排 + 共享工具
 │   ├── App.java                 # Application：连接框架服务、RemotePreferences 存取
-│   ├── SettingsActivity.java    # 模块设置界面
+│   ├── SettingsActivity.java    # 模块独立设置界面
+│   ├── HeyboxPrefs.java         # 小黑盒进程本地配置存储（配置文件放小黑盒目录）
+│   ├── LogRecorder.java         # 文件日志记录器（日志开关）
+│   ├── PreferenceReceiver.java  # 设置写回广播接收（镜像同步 RemotePreferences）
+│   └── hooks/                   # 各功能 Hook 按模块拆分
+│       ├── GeneralHook.java     #   通用：版本检测 / 屏蔽更新
+│       ├── AdFilterHook.java    #   广告过滤：开屏 / 信息流 / 气泡 / 角标
+│       ├── SettingsEntryHook.java # 设置页入口注入 + 内嵌设置面板
+│       ├── BottomTabHook.java   #   底部导航栏隐藏
+│       ├── PromotePostHook.java #   推广贴屏蔽
+│       ├── TextSelectHook.java  #   解除复制 / 标准文本选择 / 跨行选择
+│       └── ImageShareHook.java  #   图片系统分享
 ├── res/                         # 设置页布局 / 字符串 / drawable
 └── resources/META-INF/xposed/   # 模块声明
 ```
@@ -103,7 +125,8 @@ app/src/main/resources/META-INF/xposed/
    - 安装 APK → LSPosed Manager 启用模块。
      `staticScope=true` 时作用域固定为 scope.list 中的小黑盒，无需（也无法）手动勾选其它应用
    - 重启小黑盒进程
-4. **看日志**：`adb logcat -s BetterHeybox`（每个 Hook 安装成功/失败均有 ✔/✘ 日志）
+4. **看日志**：`adb logcat -s BetterHeybox`（每个 Hook 安装成功/失败均有 ✔/✘ 日志）；
+   也可在小黑盒设置面板 / 独立设置页开启「记录日志」，日志自动写入文件便于离线排查
 
 # 免责声明
 本应用与清枫（北京）科技有限公司无关，仅学习研究小黑盒APP原理，请在下载后24h内删除
