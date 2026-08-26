@@ -64,6 +64,10 @@ public final class SettingsEntryHook {
             this(title, desc, key, def, restart, clickRow, null);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart, boolean clickRow, String editKey) {
+            this(title, desc, key, def, restart, clickRow, editKey, false);
+        }
+        SwitchDef(String title, String desc, String key, boolean def, boolean restart,
+                  boolean clickRow, String editKey, boolean actionClearDaily) {
             this.title = title;
             this.desc = desc;
             this.key = key;
@@ -71,6 +75,7 @@ public final class SettingsEntryHook {
             this.restart = restart;
             this.clickRow = clickRow;
             this.editKey = editKey;
+            this.actionClearDaily = actionClearDaily;
         }
     }
 
@@ -96,10 +101,11 @@ public final class SettingsEntryHook {
                     new SwitchDef("系统分享图片", "在图片长按菜单中打开系统分享", App.KEY_SYSTEM_SHARE, true, false),
             }),
             new SettingsGroup("每日任务", new SwitchDef[]{
-                    new SwitchDef("自动完成每日分享任务", "自动完成 3 种分享类型：图片帖 / 普通帖 / 频道关注（不拦截 QQ 分享）", App.KEY_DAILY_TASK_ENABLED, false, false),
-                    new SwitchDef("图片帖链接", "第一种分享类型：分享图片帖", null, false, false, true, App.KEY_DAILY_TASK_PICTURE),
-                    new SwitchDef("普通帖链接", "第二种分享类型：分享普通帖", null, false, false, true, App.KEY_DAILY_TASK_NORMAL),
-                    new SwitchDef("游戏链接", "第三种分享类型：关注游戏", null, false, false, true, App.KEY_DAILY_TASK_CHANNEL),
+                    new SwitchDef("自动完成每日分享任务", "自动完成 3 种分享任务：分享任意帖子 / 分享游戏详情 / 分享游戏评价（不拦截 QQ 分享）", App.KEY_DAILY_TASK_ENABLED, false, false),
+                    new SwitchDef("帖子链接", "任务一：分享任意帖子", null, false, false, true, App.KEY_DAILY_TASK_PICTURE),
+                    new SwitchDef("游戏详情链接", "任务二：分享游戏详情", null, false, false, true, App.KEY_DAILY_TASK_NORMAL),
+                    new SwitchDef("游戏评价链接", "任务三：分享游戏评价", null, false, false, true, App.KEY_DAILY_TASK_CHANNEL),
+                    new SwitchDef("清除今日打卡", "清除今日已完成状态，立即重新尝试打卡（失败后用于重试）", null, false, false, true, null, true),
             }),
             new SettingsGroup("通用", new SwitchDef[]{
                     new SwitchDef("伪装通知权限", "让小黑盒认为通知已开启，获得签到加成（不真正申请权限）", App.KEY_FAKE_NOTIFICATION, false, false),
@@ -488,8 +494,21 @@ public final class SettingsEntryHook {
                 } catch (Throwable ignored) {
                 }
                 final String editKey = def.editKey;
-                itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
-                        .invoke(item, (View.OnClickListener) v -> showEditLinkDialog(activity, def.title, editKey));
+                if (def.actionClearDaily) {
+                    itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
+                            .invoke(item, (View.OnClickListener) v -> {
+                                try {
+                                    module.clearDailyTaskAndRetry(activity);
+                                    Toast.makeText(activity, "已清除今日打卡状态，重新尝试中…",
+                                            Toast.LENGTH_SHORT).show();
+                                } catch (Throwable t) {
+                                    module.logd(Log.ERROR, module.TAG, "清除今日打卡失败", t);
+                                }
+                            });
+                } else {
+                    itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
+                            .invoke(item, (View.OnClickListener) v -> showEditLinkDialog(activity, def.title, editKey));
+                }
                 int itemH = module.dp(activity, 48);
                 ((View) item).setLayoutParams(new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, itemH));

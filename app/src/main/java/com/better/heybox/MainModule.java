@@ -46,6 +46,9 @@ public class MainModule extends XposedModule {
     /** 日志 TAG */
     public static final String TAG = "BetterHeybox";
 
+    /** 每日任务 Hook 实例 */
+    private com.better.heybox.hooks.DailyTaskHook dailyTaskHook;
+
     /** 目标应用（小黑盒）包名 */
     public static final String TARGET_PKG = "com.max.xiaoheihe";
 
@@ -95,7 +98,8 @@ public class MainModule extends XposedModule {
         new PromotePostHook(this).install(cl);
         new TextSelectHook(this).install(cl);
         new ImageShareHook(this).install(cl);
-        new DailyTaskHook(this).install(cl);
+        dailyTaskHook = new DailyTaskHook(this);
+        dailyTaskHook.install(cl);
 
         logd(Log.INFO, TAG, "Hook 安装流程结束");
     }
@@ -201,5 +205,11 @@ public class MainModule extends XposedModule {
     /** dp 换算（内嵌设置面板布局使用） */
     public int dp(Context context, float value) {
         return (int) (value * context.getResources().getDisplayMetrics().density + 0.5f);
+    }
+    
+    public void clearDailyTaskAndRetry(android.app.Activity activity) {
+        if (dailyTaskHook != null) {
+            dailyTaskHook.clearTodayAndRetry(activity);
+        }
     }
 }

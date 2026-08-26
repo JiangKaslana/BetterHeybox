@@ -65,6 +65,9 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     /** 每日任务：今日已完成日期（yyyy-MM-dd，跨天自动重置） */
     public static final String KEY_DAILY_TASK_DONE_DATE = "daily_task_done_date";
 
+    /** 每日任务：重置标志 */
+    public static final String KEY_DAILY_TASK_RESET = "daily_task_reset";
+
     /** 伪装授予通知权限：让小黑盒认为通知已开启，获得签到加成（不真正申请权限） */
     public static final String KEY_FAKE_NOTIFICATION = "fake_notification";
 

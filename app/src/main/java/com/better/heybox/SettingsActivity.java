@@ -82,6 +82,7 @@ public class SettingsActivity extends Activity {
         bindLinkRow(R.id.btn_daily_picture, R.string.daily_task_picture, App.KEY_DAILY_TASK_PICTURE);
         bindLinkRow(R.id.btn_daily_normal, R.string.daily_task_normal, App.KEY_DAILY_TASK_NORMAL);
         bindLinkRow(R.id.btn_daily_channel, R.string.daily_task_channel, App.KEY_DAILY_TASK_CHANNEL);
+        bindClearDailyRow();
 
         // 通用
         bindSwitch(R.id.switch_fake_notification, App.KEY_FAKE_NOTIFICATION, false);
@@ -285,6 +286,27 @@ public class SettingsActivity extends Activity {
             @Override
             public void onClick(View v) {
                 showEditLinkDialog(getString(titleRes), key);
+            }
+        });
+    }
+    private void bindClearDailyRow() {
+        View row = findViewById(R.id.btn_daily_clear);
+        if (row == null) {
+            return;
+        }
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    App.writeString(App.KEY_DAILY_TASK_DONE_DATE, "");
+                    App.writeBoolean(App.KEY_DAILY_TASK_RESET, true);
+                    LogRecorder.recordEvent("清除今日打卡：已写入重置标志");
+                    Toast.makeText(SettingsActivity.this, R.string.daily_task_clear_done,
+                            Toast.LENGTH_SHORT).show();
+                } catch (Throwable t) {
+                    Log.e(TAG, "清除今日打卡失败: " + t);
+                    Toast.makeText(SettingsActivity.this, "清除失败，请重试", Toast.LENGTH_SHORT).show();
+                }
             }
         });
     }
