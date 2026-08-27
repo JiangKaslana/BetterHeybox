@@ -57,11 +57,11 @@ public final class DailyTaskHook {
     /** 自动化进行中标记（仅自动化流程内生效） */
     private volatile boolean autoActive;
     private volatile int currentStep = -1;
+    /** 当前步骤是否已自动触发过分享（setter hook 去重，防止页面多次设置监听器导致重复触发） */
+    private volatile int triggeredStep = -1;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    /** 点击分享/更多按钮前的等待（页面渲染） */
-    private static final long CLICK_DELAY_MS = 1500L;
     /** 单步看门狗：超时未完成则跳过（避免卡死） */
     private static final long STEP_TIMEOUT_MS = 25000L;
 
@@ -71,6 +71,11 @@ public final class DailyTaskHook {
 
     public void install(ClassLoader cl) {
         this.targetCl = cl;
+        // 强制输出到 logcat（不依赖「记录日志」开关），确认主进程是否执行了本方法
+        try {
+            Log.i(module.TAG, "DailyTaskHook.install ENTER pid=" + android.os.Process.myPid());
+        } catch (Throwable ignored) {
+        }
         hookShareUtils(cl);
         hookSharePanel(cl);
         hookTencentShareToQQ(cl);
@@ -435,105 +440,127 @@ public final class DailyTaskHook {
         }
         autoActive = true;
         currentStep = STEP_PICTURE;
+        triggeredStep = -1;
         module.logd(Log.INFO, module.TAG, "每日任务启动（3 种分享类型：图片帖→普通帖→频道）");
         openStep(activity, STEP_PICTURE);
     }
     private void hookSharePages(ClassLoader cl) {
-
-        String[] sharePages = {
-                "com.max.xiaoheihe.module.bbs.post.ui.activitys.v2.PicturePostPageActivityV2",
-                "com.max.xiaoheihe.module.bbs.post.ui.activitys.NormalPostPageActivity",
-        };
-        for (String page : sharePages) {
-            try {
-                Class<?> cls = Class.forName(page, false, cl);
-                Method onResume = cls.getMethod("onResume");
-                module.hook(onResume).intercept(chain -> {
-                    Object result = chain.proceed();
-                    if (!autoActive) {
-                        return result;
-                    }
-                    try {
-                        Object self = chain.getThisObject();
-                        if (self instanceof Activity) {
-                            scheduleClickShare((Activity) self, "iv_appbar_action_button");
-                        }
-                    } catch (Throwable t) {
-                        module.logd(Log.WARN, module.TAG, "分享页自动点击调度异常: " + t);
-                    }
-                    return result;
-                });
-                module.logd(Log.INFO, module.TAG, "✔ 分享页自动点击 Hook: "
-                        + page.substring(page.lastIndexOf('.') + 1));
-            } catch (Throwable t) {
-                module.logd(Log.WARN, module.TAG, "分享页 Hook 失败: " + page, t);
-            }
-        }
         try {
-            Class<?> cls = Class.forName(
-                    "com.max.xiaoheihe.module.bbs.ChannelsDetailActivity", false, cl);
-            Method onResume = cls.getMethod("onResume");
-            module.hook(onResume).intercept(chain -> {
+            Class<?> titleBar = Class.forName("com.max.hbcommon.component.TitleBar", false, cl);
+            hookTitleBarSetter(cl, titleBar, "setActionIconOnClickListener",
+                    "iv_appbar_action_button", STEP_PICTURE, STEP_NORMAL);
+            hookTitleBarSetter(cl, titleBar, "setActionMoreIconOnClickListener",
+                    "iv_appbar_action_button_more", STEP_NORMAL, STEP_CHANNEL);
+            module.logd(Log.INFO, module.TAG, "✔ 分享按钮 Hook 已安装（TitleBar setter）");
+        } catch (Throwable t) {
+            module.logd(Log.ERROR, module.TAG, "✘ 分享按钮 Hook 失败", t);
+        }
+    }
+    private void hookTitleBarSetter(final ClassLoader cl, final Class<?> titleBar,
+                                    final String setterName, final String viewName,
+                                    final int... allowedSteps) {
+        try {
+            Method setter = titleBar.getMethod(setterName, View.OnClickListener.class);
+            // 强制输出，确认 setter hook 是否真的挂载
+            try {
+                Log.i(module.TAG, "TitleBar " + setterName + " hooking pid="
+                        + android.os.Process.myPid());
+            } catch (Throwable ignored) {
+            }
+            module.hook(setter).intercept(chain -> {
+                try {
+                    Log.i(module.TAG, "TitleBar " + setterName + " CALLED autoActive="
+                            + autoActive + " step=" + currentStep
+                            + " pid=" + android.os.Process.myPid());
+                } catch (Throwable ignored) {
+                }
                 Object result = chain.proceed();
                 if (!autoActive) {
                     return result;
                 }
+                boolean allowed = false;
+                for (int s : allowedSteps) {
+                    if (currentStep == s) {
+                        allowed = true;
+                        break;
+                    }
+                }
+                if (!allowed) {
+                    return result;
+                }
                 try {
                     Object self = chain.getThisObject();
-                    if (self instanceof Activity) {
-                        scheduleClickShare((Activity) self, "iv_appbar_action_button_more");
+                    if (self == null) {
+                        return result;
+                    }
+                    Context ctx = null;
+                    if (self instanceof View) {
+                        ctx = ((View) self).getContext();
+                    }
+                    if (ctx == null && self instanceof Context) {
+                        ctx = (Context) self;
+                    }
+                    if (ctx instanceof Activity) {
+                        final Activity act = (Activity) ctx;
+                        // 延迟执行：等页面 onResume 完成、按钮可见后触发 onClick
+                        final Object titleBarObj = self;
+                        final Object listener = chain.getArg(0);
+                        mainHandler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    if (!autoActive || listener == null) {
+                                        return;
+                                    }
+                                    // 同一步骤只触发一次（页面可能多次设置监听器）
+                                    if (triggeredStep == currentStep) {
+                                        return;
+                                    }
+                                    triggeredStep = currentStep;
+                                    // 找到按钮并执行 onClick
+                                    int btnId = act.getResources().getIdentifier(
+                                            viewName, "id", MainModule.TARGET_PKG);
+                                    View btn = btnId == 0 ? null
+                                            : act.findViewById(btnId);
+                                    View.OnClickListener l = (View.OnClickListener) listener;
+                                    module.logd(Log.INFO, module.TAG, "每日任务：自动触发 "
+                                            + viewName + " 分享 (步骤 " + (currentStep + 1)
+                                            + "/" + STEP_COUNT + ")");
+                                    if (btn != null) {
+                                        l.onClick(btn);
+                                    } else {
+                                        // 按钮找不到时尝试直接从 TitleBar 取按钮
+                                        try {
+                                            Method getView = titleBar.getMethod(
+                                                    "getAppbarActionButtonView");
+                                            Object v = getView.invoke(titleBarObj);
+                                            if (v instanceof View) {
+                                                l.onClick((View) v);
+                                            }
+                                        } catch (Throwable ignored) {
+                                        }
+                                    }
+                                } catch (Throwable t2) {
+                                    module.logd(Log.WARN, module.TAG, "自动触发分享异常: " + t2);
+                                }
+                            }
+                        }, 1200L);
+                    } else {
+                        module.logd(Log.WARN, module.TAG,
+                                "TitleBar context 不是 Activity: " + (ctx == null ? "null" : ctx.getClass().getName()));
                     }
                 } catch (Throwable t) {
-                    module.logd(Log.WARN, module.TAG, "频道页自动点击调度异常: " + t);
+                    module.logd(Log.WARN, module.TAG, "分享按钮调度异常: " + t);
                 }
                 return result;
             });
-            module.logd(Log.INFO, module.TAG, "✔ 频道页自动点击 Hook: ChannelsDetailActivity");
+            module.logd(Log.INFO, module.TAG, "✔ TitleBar " + setterName + " Hook 已安装");
         } catch (Throwable t) {
-            module.logd(Log.WARN, module.TAG, "频道页 Hook 失败", t);
+            module.logd(Log.WARN, module.TAG, "✘ TitleBar " + setterName + " Hook 失败", t);
         }
     }
 
-    private void scheduleClickShare(final Activity activity, final String viewName) {
-        final int scheduleStep = currentStep;
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    if (!autoActive || scheduleStep != currentStep || activity.isFinishing()) {
-                        return;
-                    }
-                    int btnId = activity.getResources().getIdentifier(
-                            viewName, "id", MainModule.TARGET_PKG);
-                    if (btnId == 0) {
-                        module.logd(Log.WARN, module.TAG, "未找到 " + viewName + "，跳过该步");
-                        advance(activity);
-                        return;
-                    }
-                    View btn = activity.findViewById(btnId);
-                    if (btn == null) {
-                        module.logd(Log.WARN, module.TAG, viewName + " 视图为 null，跳过该步");
-                        advance(activity);
-                        return;
-                    }
-                    module.logd(Log.INFO, module.TAG, "每日任务：点击 " + viewName
-                            + " (步骤 " + (scheduleStep + 1) + "/" + STEP_COUNT + ")");
-                    btn.performClick();
-                } catch (Throwable t) {
-                    module.logd(Log.WARN, module.TAG, "点击按钮异常: " + t);
-                }
-            }
-        }, CLICK_DELAY_MS);
-        mainHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (autoActive && scheduleStep == currentStep) {
-                    module.logd(Log.WARN, module.TAG, "每日任务：步骤 " + (scheduleStep + 1) + " 超时，跳过");
-                    advance(activity);
-                }
-            }
-        }, STEP_TIMEOUT_MS);
-    }    private void onStepCompleted(Context context) {
+    private void onStepCompleted(Context context) {
         if (!autoActive) {
             return;
         }
@@ -549,6 +576,7 @@ public final class DailyTaskHook {
         int next = currentStep + 1;
         if (next < STEP_COUNT) {
             currentStep = next;
+            triggeredStep = -1; // 下一步允许重新触发
             if (context != null) {
                 openStep(context, next);
             }
@@ -599,12 +627,14 @@ public final class DailyTaskHook {
     private void abortDailyTask() {
         autoActive = false;
         currentStep = -1;
+        triggeredStep = -1;
         module.logd(Log.WARN, module.TAG,
                 "每日任务：打开帖子失败，已复位（今日未标记完成，下次进入主页将重试）");
     }
     public void clearTodayAndRetry(Activity activity) {
         autoActive = false;
         currentStep = -1;
+        triggeredStep = -1;
         clearDoneDate();
         module.logd(Log.INFO, module.TAG, "已清除今日打卡状态，重新尝试每日任务");
         if (activity != null) {
@@ -625,6 +655,7 @@ public final class DailyTaskHook {
     private void finishDailyTask(Context context) {
         autoActive = false;
         currentStep = -1;
+        triggeredStep = -1;
         HeyboxPrefs.setString(App.KEY_DAILY_TASK_DONE_DATE, today());
         try {
             SharedPreferences remote = module.getRemotePreferences(App.PREFS_GROUP);

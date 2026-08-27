@@ -578,12 +578,81 @@ public final class SettingsEntryHook {
         } catch (Throwable ignored) {
         }
     }
-
-    /**
-     * 「分享渠道」选择弹框：QQ / 微信 / 微博。写入 {@link App#KEY_SHARE_CHANNEL}（小黑盒进程本地配置），
-     * 下次自动打卡按所选渠道在分享面板自动点击对应按钮并伪造成功回调。
-     */
     private void showChannelDialog(final Activity activity, final SwitchDef def) {
+        final String[] channels = {"QQ", "WECHAT", "WEIBO"};
+        final String[] labels = {"QQ / QQ空间", "微信 / 朋友圈", "微博"};
+        String cur = module.getString(App.KEY_SHARE_CHANNEL, "QQ");
+        final int checked = "WECHAT".equals(cur) ? 1 : ("WEIBO".equals(cur) ? 2 : 0);
+        try {
+            ClassLoader cl = activity.getClassLoader();
+            Class<?> builderCls = Class.forName("com.max.hbcommon.view.d$i", false, cl);
+            Object builder = builderCls.getConstructor(Context.class).newInstance(activity);
+            LinearLayout list = new LinearLayout(activity);
+            list.setOrientation(LinearLayout.VERTICAL);
+            int pad = module.dp(activity, 8);
+            list.setPadding(pad, pad, pad, pad);
+            for (int i = 0; i < labels.length; i++) {
+                final int index = i;
+                TextView row = new TextView(activity);
+                row.setText(labels[i]);
+                row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(pad, module.dp(activity, 14), pad, module.dp(activity, 14));
+                int rowColor = index == checked ? 0xFF1677FF : 0xFF333333;
+                try {
+                    int colorId = activity.getResources().getIdentifier(
+                            index == checked ? "color_text_link_day_night" : "color_text_primary_day_night",
+                            "color", MainModule.TARGET_PKG);
+                    if (colorId != 0) {
+                        rowColor = activity.getResources().getColor(colorId);
+                    }
+                } catch (Throwable ignored) {
+                }
+                row.setTextColor(rowColor);
+                row.setClickable(true);
+                row.setFocusable(true);
+                list.addView(row, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            }
+
+            builderCls.getMethod("B", CharSequence.class).invoke(builder, "分享渠道");
+            builderCls.getMethod("i", View.class).invoke(builder, list);
+            Class<?> onClickCls = DialogInterface.OnClickListener.class;
+            Object cancelListener = java.lang.reflect.Proxy.newProxyInstance(
+                    cl, new Class<?>[]{onClickCls}, (proxy, method, args) -> {
+                        if ("onClick".equals(method.getName())) {
+                            dismissDialog(args);
+                        }
+                        return null;
+                    });
+            builderCls.getMethod("r", CharSequence.class, onClickCls).invoke(builder, "取消", cancelListener);
+            final Object heyBoxDialog = builderCls.getMethod("J").invoke(builder);
+            for (int i = 0; i < labels.length; i++) {
+                final int index = i;
+                View row = list.getChildAt(i);
+                row.setOnClickListener(v -> {
+                    try {
+                        HeyboxPrefs.init(activity);
+                        HeyboxPrefs.setString(App.KEY_SHARE_CHANNEL, channels[index]);
+                        LogRecorder.recordEvent("分享渠道已选择: " + channels[index]);
+                        Toast.makeText(activity, "分享渠道已设为 " + labels[index],
+                                Toast.LENGTH_SHORT).show();
+                    } catch (Throwable t) {
+                        module.logd(Log.WARN, module.TAG, "保存分享渠道失败: " + t);
+                    }
+                    try {
+                        heyBoxDialog.getClass().getMethod("dismiss").invoke(heyBoxDialog);
+                    } catch (Throwable ignored) {
+                    }
+                });
+            }
+            module.logd(Log.INFO, module.TAG, "✔ 使用小黑盒原生弹窗选择分享渠道");
+        } catch (Throwable t) {
+            module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗不可用，回退系统弹窗: " + t);
+            showChannelDialogFallback(activity, def);
+        }
+    }
+    private void showChannelDialogFallback(final Activity activity, final SwitchDef def) {
         final String[] channels = {"QQ", "WECHAT", "WEIBO"};
         final String[] labels = {"QQ / QQ空间", "微信 / 朋友圈", "微博"};
         String cur = module.getString(App.KEY_SHARE_CHANNEL, "QQ");
