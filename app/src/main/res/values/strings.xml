@@ -55,4 +55,17 @@
     <string name="restart_done">已停止小黑盒，请重新打开</string>
     <string name="restart_failed">无法自动重启，请手动重启小黑盒</string>
     <string name="service_not_ready">框架服务未连接，请确认模块已在 LSPosed 中启用</string>
+
+    <!-- 配置备份：导入 / 导出 -->
+    <string name="section_backup">配置备份</string>
+    <string name="export_config">导出配置</string>
+    <string name="export_config_desc">把所有开关和分享链接保存为 JSON 文件</string>
+    <string name="import_config">导入配置</string>
+    <string name="import_config_desc">从 JSON 文件恢复全部设置</string>
+    <string name="config_exported">配置已导出</string>
+    <string name="config_export_failed">导出失败，请重试</string>
+    <string name="config_import_confirm">导入将覆盖当前所有设置（开关、分享链接、分享渠道等），确定继续？</string>
+    <string name="config_import_ok">导入</string>
+    <string name="config_imported">配置已导入（%1$d 项）</string>
+    <string name="config_import_failed">导入失败：文件格式无效或已损坏</string>
 </resources>

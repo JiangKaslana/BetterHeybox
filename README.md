@@ -8,8 +8,7 @@
 本应用与清枫（北京）科技有限公司无关，仅学习研究小黑盒APP部分原理，请在下载后24h内删除
 
 > [!Note]
->本应用兼容 [小黑盒 1.3.393](https://github.com/Mrmiaomrzh/BetterHeybox/releases/download/v0.2.0/heybox_1.3.393.apk) 及以上版本，
->其他版本出现的问题不会进行处理
+>本应用兼容 [小黑盒 1.3.393](https://github.com/Mrmiaomrzh/BetterHeybox/releases/download/v0.2.0/heybox_1.3.393.apk) 及以上版本，其他版本出现的问题不会进行处理
 
 > [!WARNING]
 > 使用免Root框架`「NPatch」`时，需要把`破解签名校验`改成`Extreme`，不然会有缺少参数闪退的问题
@@ -63,7 +62,7 @@
 | 网页链接（xiaoheihe.cn） | `https://xiaoheihe.cn/a/123456` |
 | 深链协议（heybox://） | `heybox://v3/bbs/app/api/web/share?link_id=123456` |
 
-> 链接经小黑盒 RouterActivity 自动路由到对应帖子/游戏页；未配置的类型自动跳过。
+> 链接经小黑盒 RouterActivity 自动路由到对应帖子/游戏页；未配置的类型自动跳过。  
 > **获取方式**：在小黑盒 App 打开目标帖子 → 分享 → 复制链接，取分享链接或网页链接均可；
 > 游戏/频道页同理复制分享链接  
 
@@ -83,7 +82,7 @@
 | Service | `io.github.libxposed:service:102.0.0` |
 | compileSdk / targetSdk | 37 |
 | minSdk | 26 |
-| AGP / Gradle | 9.2.1 / 9.5.1 |
+| AGP / Gradle | 9.2.1 / 9.7.1 |
 | JDK | 17+ |
 
 ## 工程结构
@@ -126,7 +125,7 @@ app/src/main/resources/META-INF/xposed/
 
 ## 构建与使用
 
-1. **环境**：Android Studio 打开本目录（首次自动下载 Gradle 9.5.1 + 依赖，需网络；
+1. **环境**：Android Studio 打开本目录（首次自动下载 Gradle 9.7.1 + 依赖，需网络；
    若提示缺 wrapper 让 AS 自动补全；SDK Manager 需装有 **Platform 37**）
 2. **编译**：
    - Windows：`gradlew.bat assembleDebug`

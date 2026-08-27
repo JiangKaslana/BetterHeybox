@@ -3,6 +3,9 @@ package com.better.heybox;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlertDialog;
+import android.content.ContentResolver;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
 import android.util.Log;
@@ -13,9 +16,16 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 import io.github.libxposed.service.XposedService;
 
@@ -32,6 +42,11 @@ public class SettingsActivity extends Activity {
     private boolean mDirty;
     /** 程序化刷新开关时抑制监听回调 */
     private boolean mRefreshing;
+
+    /** 配置导出（系统「保存到」选择器）请求码 */
+    private static final int REQUEST_EXPORT_CONFIG = 1001;
+    /** 配置导入（系统文件选择器）请求码 */
+    private static final int REQUEST_IMPORT_CONFIG = 1002;
 
     private TextView mLogPathView;
 
@@ -89,6 +104,9 @@ public class SettingsActivity extends Activity {
         bindSwitch(R.id.switch_fake_notification, App.KEY_FAKE_NOTIFICATION, false);
         bindSwitch(R.id.switch_block_update, App.KEY_BLOCK_UPDATE, false);
         bindSwitch(R.id.switch_log, App.KEY_LOG, false);
+
+        // 配置备份：导出 / 导入
+        bindBackupRows();
 
         // 退出按钮：关闭设置界面
         findViewById(R.id.btn_exit).setOnClickListener(new View.OnClickListener() {
@@ -363,6 +381,142 @@ public class SettingsActivity extends Activity {
                     .show();
         } catch (Throwable t) {
             Log.e(TAG, "打开链接编辑框失败: " + t);
+        }
+    }
+
+    /** 配置备份：绑定「导出配置」「导入配置」两行点击事件 */
+    private void bindBackupRows() {
+        View exportRow = findViewById(R.id.btn_export_config);
+        if (exportRow != null) {
+            exportRow.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    exportConfig();
+                }
+            });
+        }
+        View importRow = findViewById(R.id.btn_import_config);
+        if (importRow != null) {
+            importRow.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    confirmImport();
+                }
+            });
+        }
+    }
+
+    /** 导出配置：打开系统「保存到」选择器（免存储权限），用户确认位置后写 JSON 文件 */
+    private void exportConfig() {
+        try {
+            if (ConfigBackup.buildJson(App::readBoolean, App::readString) == null) {
+                Toast.makeText(this, R.string.config_export_failed, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            String fileName = "BetterHeybox配置_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+                    .format(new Date()) + ".json";
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/json");
+            intent.putExtra(Intent.EXTRA_TITLE, fileName);
+            startActivityForResult(intent, REQUEST_EXPORT_CONFIG);
+        } catch (Throwable t) {
+            Log.e(TAG, "打开导出选择器失败: " + t);
+            Toast.makeText(this, R.string.config_export_failed, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** 导入配置：先确认覆盖当前设置，再打开系统文件选择器 */
+    private void confirmImport() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.import_config)
+                .setMessage(R.string.config_import_confirm)
+                .setPositiveButton(R.string.config_import_ok, (dialog, which) -> {
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("application/json");
+                    startActivityForResult(intent, REQUEST_IMPORT_CONFIG);
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            return;
+        }
+        Uri uri = data.getData();
+        if (requestCode == REQUEST_EXPORT_CONFIG) {
+            writeExport(uri);
+        } else if (requestCode == REQUEST_IMPORT_CONFIG) {
+            readImport(uri);
+        }
+    }
+
+    /** 把当前配置写入用户选择的导出文件 */
+    private void writeExport(Uri uri) {
+        try {
+            String json = ConfigBackup.buildJson(App::readBoolean, App::readString);
+            if (json == null) {
+                Toast.makeText(this, R.string.config_export_failed, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            ContentResolver resolver = getContentResolver();
+            OutputStream os = resolver.openOutputStream(uri);
+            if (os == null) {
+                Toast.makeText(this, R.string.config_export_failed, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            try (OutputStream out = os) {
+                out.write(json.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+            LogRecorder.recordEvent("配置已导出: " + uri);
+            Toast.makeText(this, R.string.config_exported, Toast.LENGTH_SHORT).show();
+        } catch (Throwable t) {
+            Log.e(TAG, "写入导出文件失败: " + t);
+            Toast.makeText(this, R.string.config_export_failed, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** 读取用户选择的配置文件并应用；成功后刷新开关显示 */
+    private void readImport(Uri uri) {
+        try {
+            ContentResolver resolver = getContentResolver();
+            InputStream is = resolver.openInputStream(uri);
+            if (is == null) {
+                Toast.makeText(this, R.string.config_import_failed, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            try (InputStream in = is) {
+                byte[] chunk = new byte[8192];
+                int len;
+                while ((len = in.read(chunk)) != -1) {
+                    buffer.write(chunk, 0, len);
+                }
+            }
+            String json = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+            ConfigBackup.ApplyResult result = ConfigBackup.applyJson(json,
+                    App::writeBoolean, App::writeString);
+            if (result == null) {
+                Toast.makeText(this, R.string.config_import_failed, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            mDirty = true;
+            LogRecorder.recordEvent("配置已导入: " + result.applied + " 项, uri=" + uri);
+            refreshAll();
+            updateLogPath();
+            Toast.makeText(this, getString(R.string.config_imported, result.applied),
+                    Toast.LENGTH_SHORT).show();
+            if (result.restartRequired) {
+                showRestartDialog();
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "读取导入文件失败: " + t);
+            Toast.makeText(this, R.string.config_import_failed, Toast.LENGTH_SHORT).show();
         }
     }
 
