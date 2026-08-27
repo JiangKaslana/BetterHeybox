@@ -4,12 +4,15 @@
 
 增强小黑盒（Heybox）的 LSPosed 模块。
 
-## Note
-本应用兼容 [小黑盒 1.3.393](https://github.com/Mrmiaomrzh/BetterHeybox/releases/download/v0.2.0/heybox_1.3.393.apk) 及以上版本，
-其他版本出现的问题不会进行处理
-
 # 免责声明
 本应用与清枫（北京）科技有限公司无关，仅学习研究小黑盒APP部分原理，请在下载后24h内删除
+
+> [!Note]
+>本应用兼容 [小黑盒 1.3.393](https://github.com/Mrmiaomrzh/BetterHeybox/releases/download/v0.2.0/heybox_1.3.393.apk) 及以上版本，
+>其他版本出现的问题不会进行处理
+
+> [!WARNING]
+> 使用免Root框架`「NPatch」`时，需要把`破解签名校验`改成`Extreme`，不然会有缺少参数闪退的问题
 
 ## 功能
 
