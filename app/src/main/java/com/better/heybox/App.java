@@ -68,6 +68,9 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     /** 每日任务：重置标志 */
     public static final String KEY_DAILY_TASK_RESET = "daily_task_reset";
 
+    /** 每日任务：分享渠道（QQ=QQ/QQ空间，WECHAT=微信好友/朋友圈；默认 QQ） */
+    public static final String KEY_SHARE_CHANNEL = "daily_task_channel_type";
+
     /** 伪装授予通知权限：让小黑盒认为通知已开启，获得签到加成（不真正申请权限） */
     public static final String KEY_FAKE_NOTIFICATION = "fake_notification";
 

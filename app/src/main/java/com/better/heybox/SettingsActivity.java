@@ -82,6 +82,7 @@ public class SettingsActivity extends Activity {
         bindLinkRow(R.id.btn_daily_picture, R.string.daily_task_picture, App.KEY_DAILY_TASK_PICTURE);
         bindLinkRow(R.id.btn_daily_normal, R.string.daily_task_normal, App.KEY_DAILY_TASK_NORMAL);
         bindLinkRow(R.id.btn_daily_channel, R.string.daily_task_channel, App.KEY_DAILY_TASK_CHANNEL);
+        bindChannelRow();
         bindClearDailyRow();
 
         // 通用
@@ -289,6 +290,35 @@ public class SettingsActivity extends Activity {
             }
         });
     }
+    /** 「分享渠道」选择行：写入 RemotePreferences，小黑盒进程下次打卡按所选渠道自动分享 */
+    private void bindChannelRow() {
+        View row = findViewById(R.id.btn_daily_channel_type);
+        if (row == null) {
+            return;
+        }
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                final String[] channels = {"QQ", "WECHAT", "WEIBO"};
+                final String[] labels = {"QQ / QQ空间", "微信 / 朋友圈", "微博"};
+                String cur = App.readString(App.KEY_SHARE_CHANNEL, "QQ");
+                int checked = "WECHAT".equals(cur) ? 1 : ("WEIBO".equals(cur) ? 2 : 0);
+                new AlertDialog.Builder(SettingsActivity.this)
+                        .setTitle(R.string.daily_task_channel_type)
+                        .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                            App.writeString(App.KEY_SHARE_CHANNEL, channels[which]);
+                            LogRecorder.recordEvent("分享渠道已选择: " + channels[which]);
+                            Toast.makeText(SettingsActivity.this,
+                                    getString(R.string.daily_task_channel_type_done, labels[which]),
+                                    Toast.LENGTH_SHORT).show();
+                            dialog.dismiss();
+                        })
+                        .setNegativeButton("取消", null)
+                        .show();
+            }
+        });
+    }
+
     private void bindClearDailyRow() {
         View row = findViewById(R.id.btn_daily_clear);
         if (row == null) {

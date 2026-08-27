@@ -74,6 +74,8 @@ public final class DailyTaskHook {
         hookShareUtils(cl);
         hookSharePanel(cl);
         hookTencentShareToQQ(cl);
+        hookWeChatShare(cl);
+        hookSinaShare(cl);
         hookMainResume(cl);
         hookSharePages(cl);
         module.logd(Log.INFO, module.TAG, "✔ 每日任务 Hook 安装完成");
@@ -145,10 +147,10 @@ public final class DailyTaskHook {
                 try {
                     Object self = chain.getThisObject();
                     if (self instanceof Dialog) {
-                        autoClickQQ((Dialog) self);
+                        autoClickChannel((Dialog) self);
                     }
                 } catch (Throwable t) {
-                    module.logd(Log.WARN, module.TAG, "分享面板自动点 QQ 异常: " + t);
+                    module.logd(Log.WARN, module.TAG, "分享面板自动点渠道异常: " + t);
                 }
                 return result;
             });
@@ -157,7 +159,10 @@ public final class DailyTaskHook {
             module.logd(Log.WARN, module.TAG, "✘ 分享面板 Hook 失败", t);
         }
     }
-    private void autoClickQQ(final Dialog dialog) {
+
+    /** 按配置的分享渠道（QQ/WECHAT）在面板中自动点击对应渠道按钮 */
+    private void autoClickChannel(final Dialog dialog) {
+        final String channel = currentChannel();
         mainHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -165,37 +170,57 @@ public final class DailyTaskHook {
                     if (!autoActive || dialog == null || !dialog.isShowing()) {
                         return;
                     }
-                    View qq = findQQView(dialog.getWindow() != null
+                    ViewGroup root = dialog.getWindow() != null
                             && dialog.getWindow().getDecorView() instanceof ViewGroup
-                            ? (ViewGroup) dialog.getWindow().getDecorView() : null);
-                    if (qq == null) {
-                        module.logd(Log.WARN, module.TAG, "分享面板未找到 QQ 渠道，跳过该步");
+                            ? (ViewGroup) dialog.getWindow().getDecorView() : null;
+                    // 按配置渠道在面板查找对应按钮文本
+                    View target = null;
+                    if ("WECHAT".equals(channel)) {
+                        target = findChannelView(root, "微信");
+                        if (target == null) {
+                            target = findChannelView(root, "朋友圈");
+                        }
+                    } else if ("WEIBO".equals(channel)) {
+                        target = findChannelView(root, "微博");
+                    } else {
+                        target = findChannelView(root, "QQ");
+                    }
+                    if (target == null) {
+                        module.logd(Log.WARN, module.TAG, "分享面板未找到渠道按钮(" + channel + ")，跳过该步");
                         return;
                     }
-                    module.logd(Log.INFO, module.TAG, "每日任务：自动点击分享面板 QQ 渠道 (步骤 "
+                    module.logd(Log.INFO, module.TAG, "每日任务：自动点击分享面板 " + channel + " 渠道 (步骤 "
                             + (currentStep + 1) + "/" + STEP_COUNT + ")");
-                    qq.performClick();
+                    target.performClick();
                 } catch (Throwable t) {
-                    module.logd(Log.WARN, module.TAG, "自动点 QQ 渠道异常: " + t);
+                    module.logd(Log.WARN, module.TAG, "自动点渠道异常: " + t);
                 }
             }
         }, 800L);
     }
-    private static View findQQView(ViewGroup root) {
-        if (root == null) {
+
+    /** 当前配置的分享渠道（默认 QQ） */
+    private String currentChannel() {
+        String v = module.getString(App.KEY_SHARE_CHANNEL, "");
+        return v == null || v.isEmpty() ? "QQ" : v;
+    }
+
+    /** 递归查找分享面板里文本为目标渠道名的可点击 View（SoulFrog 3.8.0 b() 同款） */
+    private static View findChannelView(ViewGroup root, String targetText) {
+        if (root == null || targetText == null) {
             return null;
         }
         for (int i = 0; i < root.getChildCount(); i++) {
             View child = root.getChildAt(i);
             if (child instanceof ViewGroup) {
-                View found = findQQView((ViewGroup) child);
+                View found = findChannelView((ViewGroup) child, targetText);
                 if (found != null) {
                     return found;
                 }
             }
             if (child instanceof android.widget.TextView) {
                 CharSequence text = ((android.widget.TextView) child).getText();
-                if (text != null && "QQ".equals(text.toString())) {
+                if (text != null && targetText.equals(text.toString().trim())) {
                     View v = child;
                     while (v != null) {
                         if (v.isClickable()) {
@@ -233,7 +258,7 @@ public final class DailyTaskHook {
             }
             final Method onComplete = iUiListener.getMethod("onComplete", Object.class);
             module.hook(shareToQQ).intercept(chain -> {
-                if (!autoActive) {
+                if (!autoActive || !"QQ".equals(currentChannel())) {
                     return chain.proceed();
                 }
                 try {
@@ -256,6 +281,109 @@ public final class DailyTaskHook {
             module.logd(Log.INFO, module.TAG, "✔ 分享完成 Hook 已安装: Tencent.shareToQQ");
         } catch (Throwable t) {
             module.logd(Log.ERROR, module.TAG, "✘ Tencent.shareToQQ Hook 失败", t);
+        }
+    }
+
+    // ---------- 1d. 微信分享完成核心：UMWXHandler.share(ShareContent, UMShareListener) ----------
+    /**
+     * 微信好友/朋友圈分享经友盟 {@code UMWXHandler.share(ShareContent, UMShareListener)}。
+     * 自动化进行中直接触发 {@code UMShareListener.onResult(SHARE_MEDIA.WEIXIN)} 并返回 true
+     * 跳过真实微信 SDK（不调起微信），让小黑盒判定分享成功。393/394 双版本同签名。
+     */
+    private void hookWeChatShare(ClassLoader cl) {
+        try {
+            Class<?> handler = Class.forName("com.umeng.socialize.handler.UMWXHandler", false, cl);
+            Class<?> listener = Class.forName("com.umeng.socialize.UMShareListener", false, cl);
+            Class<?> shareContent = Class.forName("com.umeng.socialize.ShareContent", false, cl);
+            Method share = null;
+            for (Method m : handler.getDeclaredMethods()) {
+                if ("share".equals(m.getName()) && m.getParameterTypes().length == 2
+                        && m.getParameterTypes()[0] == shareContent
+                        && m.getParameterTypes()[1] == listener) {
+                    share = m;
+                    break;
+                }
+            }
+            if (share == null) {
+                module.logd(Log.WARN, module.TAG, "✘ 未找到 UMWXHandler.share(ShareContent,UMShareListener)");
+                return;
+            }
+            final Method onResult = listener.getMethod("onResult",
+                    Class.forName("com.umeng.socialize.bean.SHARE_MEDIA", false, cl));
+            final Object weixin = Enum.valueOf(
+                    (Class<Enum>) Class.forName("com.umeng.socialize.bean.SHARE_MEDIA", false, cl),
+                    "WEIXIN");
+            module.hook(share).intercept(chain -> {
+                if (!autoActive || !"WECHAT".equals(currentChannel())) {
+                    return chain.proceed();
+                }
+                try {
+                    Object l = chain.getArg(1);
+                    if (l != null) {
+                        onResult.invoke(l, weixin);
+                        module.logd(Log.INFO, module.TAG, "✔ 每日任务：微信分享成功回调已触发 (步骤 "
+                                + (currentStep + 1) + "/" + STEP_COUNT + ")");
+                    }
+                    mainHandler.post(() -> onStepCompleted(null));
+                } catch (Throwable t) {
+                    module.logd(Log.WARN, module.TAG, "微信分享伪造回调异常: " + t);
+                }
+                return Boolean.TRUE; // 跳过真实微信 SDK
+            });
+            module.logd(Log.INFO, module.TAG, "✔ 分享完成 Hook 已安装: UMWXHandler.share");
+        } catch (Throwable t) {
+            module.logd(Log.ERROR, module.TAG, "✘ 微信分享 Hook 失败", t);
+        }
+    }
+
+    // ---------- 1e. 微博分享完成核心：SinaSsoHandler.share(ShareContent, UMShareListener) ----------
+    /**
+     * 微博分享经友盟 {@code SinaSsoHandler.share(ShareContent, UMShareListener)} → 新浪
+     * {@code WBAPI.shareMessage} 拉起微博，成功回调经 {@code WbShareCallback.onComplete} →
+     * {@code UMShareListener.onResult(SHARE_MEDIA.SINA)}。自动化进行中直接触发 onResult
+     * 并返回 true 跳过真实微博 SDK。393/394 双版本同签名。
+     */
+    private void hookSinaShare(ClassLoader cl) {
+        try {
+            Class<?> handler = Class.forName("com.umeng.socialize.handler.SinaSsoHandler", false, cl);
+            Class<?> listener = Class.forName("com.umeng.socialize.UMShareListener", false, cl);
+            Class<?> shareContent = Class.forName("com.umeng.socialize.ShareContent", false, cl);
+            Class<?> shareMedia = Class.forName("com.umeng.socialize.bean.SHARE_MEDIA", false, cl);
+            Method share = null;
+            for (Method m : handler.getDeclaredMethods()) {
+                if ("share".equals(m.getName()) && m.getParameterTypes().length == 2
+                        && m.getParameterTypes()[0] == shareContent
+                        && m.getParameterTypes()[1] == listener) {
+                    share = m;
+                    break;
+                }
+            }
+            if (share == null) {
+                module.logd(Log.WARN, module.TAG, "✘ 未找到 SinaSsoHandler.share(ShareContent,UMShareListener)");
+                return;
+            }
+            final Method onResult = listener.getMethod("onResult", shareMedia);
+            final Object sina = Enum.valueOf((Class<Enum>) shareMedia, "SINA");
+            module.hook(share).intercept(chain -> {
+                if (!autoActive || !"WEIBO".equals(currentChannel())) {
+                    return chain.proceed();
+                }
+                try {
+                    Object l = chain.getArg(1);
+                    if (l != null) {
+                        onResult.invoke(l, sina);
+                        module.logd(Log.INFO, module.TAG, "✔ 每日任务：微博分享成功回调已触发 (步骤 "
+                                + (currentStep + 1) + "/" + STEP_COUNT + ")");
+                    }
+                    mainHandler.post(() -> onStepCompleted(null));
+                } catch (Throwable t) {
+                    module.logd(Log.WARN, module.TAG, "微博分享伪造回调异常: " + t);
+                }
+                return Boolean.TRUE; // 跳过真实微博 SDK
+            });
+            module.logd(Log.INFO, module.TAG, "✔ 分享完成 Hook 已安装: SinaSsoHandler.share");
+        } catch (Throwable t) {
+            module.logd(Log.ERROR, module.TAG, "✘ 微博分享 Hook 失败", t);
         }
     }
     private void hookMainResume(ClassLoader cl) {

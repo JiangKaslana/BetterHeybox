@@ -34,6 +34,9 @@
     <string name="daily_task_clear">清除今日打卡</string>
     <string name="daily_task_clear_desc">清除今日已完成状态，重新尝试自动打卡（打卡失败后用于重试）</string>
     <string name="daily_task_clear_done">已清除今日打卡状态，重新尝试中…</string>
+    <string name="daily_task_channel_type">分享渠道</string>
+    <string name="daily_task_channel_type_desc">自动分享使用的渠道：QQ / 微信 / 微博</string>
+    <string name="daily_task_channel_type_done">分享渠道已设为 %1$s</string>
     <string name="fake_notification">伪装通知权限</string>
     <string name="fake_notification_desc">让小黑盒认为通知已开启，获得签到加成（不真正申请权限）</string>
     <string name="section_general">通用</string>

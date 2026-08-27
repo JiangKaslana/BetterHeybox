@@ -57,18 +57,23 @@ public final class SettingsEntryHook {
         final boolean restart;
         final boolean clickRow;
         final String editKey; // clickRow 时编辑的字符串配置 key（null 则不弹编辑框）
-        final boolean actionClearDaily;
+        final boolean actionClearDaily; // clickRow 动作：清除每日打卡状态并重试
+        final boolean actionChannel; // clickRow 动作：选择分享渠道
         SwitchDef(String title, String desc, String key, boolean def, boolean restart) {
-            this(title, desc, key, def, restart, false, null);
+            this(title, desc, key, def, restart, false, null, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart, boolean clickRow) {
-            this(title, desc, key, def, restart, clickRow, null);
+            this(title, desc, key, def, restart, clickRow, null, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart, boolean clickRow, String editKey) {
-            this(title, desc, key, def, restart, clickRow, editKey, false);
+            this(title, desc, key, def, restart, clickRow, editKey, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart,
                   boolean clickRow, String editKey, boolean actionClearDaily) {
+            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, false);
+        }
+        SwitchDef(String title, String desc, String key, boolean def, boolean restart,
+                  boolean clickRow, String editKey, boolean actionClearDaily, boolean actionChannel) {
             this.title = title;
             this.desc = desc;
             this.key = key;
@@ -77,6 +82,7 @@ public final class SettingsEntryHook {
             this.clickRow = clickRow;
             this.editKey = editKey;
             this.actionClearDaily = actionClearDaily;
+            this.actionChannel = actionChannel;
         }
     }
 
@@ -106,6 +112,7 @@ public final class SettingsEntryHook {
                     new SwitchDef("帖子链接", "任务一：分享任意帖子", null, false, false, true, App.KEY_DAILY_TASK_PICTURE),
                     new SwitchDef("游戏详情链接", "任务二：分享游戏详情", null, false, false, true, App.KEY_DAILY_TASK_NORMAL),
                     new SwitchDef("游戏评价链接", "任务三：分享游戏评价", null, false, false, true, App.KEY_DAILY_TASK_CHANNEL),
+                    new SwitchDef("分享渠道", "自动分享使用的渠道：QQ / 微信 / 微博（默认 QQ）", App.KEY_SHARE_CHANNEL, false, false, true, null, false, true),
                     new SwitchDef("清除今日打卡", "清除今日已完成状态，立即重新尝试打卡（失败后用于重试）", null, false, false, true, null, true),
             }),
             new SettingsGroup("通用", new SwitchDef[]{
@@ -506,6 +513,9 @@ public final class SettingsEntryHook {
                                     module.logd(Log.ERROR, module.TAG, "清除今日打卡失败", t);
                                 }
                             });
+                } else if (def.actionChannel) {
+                    itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
+                            .invoke(item, (View.OnClickListener) v -> showChannelDialog(activity, def));
                 } else {
                     itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
                             .invoke(item, (View.OnClickListener) v -> showEditLinkDialog(activity, def.title, editKey));
@@ -566,6 +576,37 @@ public final class SettingsEntryHook {
                 ((DialogInterface) args[0]).dismiss();
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 「分享渠道」选择弹框：QQ / 微信 / 微博。写入 {@link App#KEY_SHARE_CHANNEL}（小黑盒进程本地配置），
+     * 下次自动打卡按所选渠道在分享面板自动点击对应按钮并伪造成功回调。
+     */
+    private void showChannelDialog(final Activity activity, final SwitchDef def) {
+        final String[] channels = {"QQ", "WECHAT", "WEIBO"};
+        final String[] labels = {"QQ / QQ空间", "微信 / 朋友圈", "微博"};
+        String cur = module.getString(App.KEY_SHARE_CHANNEL, "QQ");
+        int checked = "WECHAT".equals(cur) ? 1 : ("WEIBO".equals(cur) ? 2 : 0);
+        try {
+            new AlertDialog.Builder(activity)
+                    .setTitle("分享渠道")
+                    .setSingleChoiceItems(labels, checked, (dialog, which) -> {
+                        try {
+                            HeyboxPrefs.init(activity);
+                            HeyboxPrefs.setString(App.KEY_SHARE_CHANNEL, channels[which]);
+                            LogRecorder.recordEvent("分享渠道已选择: " + channels[which]);
+                            Toast.makeText(activity, "分享渠道已设为 " + labels[which],
+                                    Toast.LENGTH_SHORT).show();
+                        } catch (Throwable t) {
+                            module.logd(Log.WARN, module.TAG, "保存分享渠道失败: " + t);
+                        }
+                        dialog.dismiss();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+        } catch (Throwable t) {
+            module.logd(Log.WARN, module.TAG, "分享渠道选择弹框失败: " + t);
         }
     }
 
