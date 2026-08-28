@@ -10,6 +10,7 @@ import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.better.heybox.App;
+import com.better.heybox.ForegroundTracker;
 import com.better.heybox.MainModule;
 import com.better.heybox.LogRecorder;
 
@@ -68,6 +69,8 @@ public final class GeneralHook {
                 Object self = chain.getThisObject();
                 if (self instanceof Activity) {
                     Activity activity = (Activity) self;
+                    // Debug 构建：每次应用打开到前台记录检查点（划到后台不记录）
+                    ForegroundTracker.onActivityResumed(activity);
                     View decor = activity.getWindow().getDecorView();
                     decor.postDelayed(() -> showVersionNotice(activity, cl), 600L);
                 }

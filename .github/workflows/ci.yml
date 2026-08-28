@@ -33,20 +33,6 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Restore signing keystore from secrets
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            mkdir -p keystore
-            echo "$KEYSTORE_BASE64" | base64 --decode > keystore/release.jks
-            printf 'storeFile=keystore/release.jks\nstorePassword=%s\nkeyAlias=betterheybox\nkeyPassword=%s\n' \
-              "$KEYSTORE_PASSWORD" "$KEYSTORE_PASSWORD" > keystore.properties
-          else
-            echo "No KEYSTORE_BASE64 secret - building unsigned APK"
-          fi
-
       - name: Calculate CI version
         id: version
         env:
@@ -80,10 +66,10 @@ jobs:
           echo "version_code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "CI version: ${ci_version}"
 
-      - name: Build release APK
+      - name: Build debug APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease \
+          ./gradlew assembleDebug \
             --project-prop VERSION_NAME="${{ steps.version.outputs.version_name }}" \
             --project-prop VERSION_CODE="${{ steps.version.outputs.version_code }}"
 
@@ -92,7 +78,7 @@ jobs:
           CI_VERSION: ${{ steps.version.outputs.version }}
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/*.apk "dist/BetterHeybox-${CI_VERSION}.apk"
+          cp app/build/outputs/apk/debug/*.apk "dist/BetterHeybox-${CI_VERSION}.apk"
           printf '%s\n' "$CI_VERSION" > dist/version.txt
 
       - name: Upload CI artifact

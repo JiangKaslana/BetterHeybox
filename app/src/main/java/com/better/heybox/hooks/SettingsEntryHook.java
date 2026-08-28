@@ -24,6 +24,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.ref.WeakReference;
@@ -35,8 +36,11 @@ import java.util.Date;
 import java.util.Locale;
 
 import com.better.heybox.App;
+import com.better.heybox.BuildFlags;
+import com.better.heybox.Checkpoint;
 import com.better.heybox.ConfigBackup;
 import com.better.heybox.HeyboxPrefs;
+import com.better.heybox.LogExport;
 import com.better.heybox.LogRecorder;
 import com.better.heybox.MainModule;
 import com.better.heybox.PreferenceReceiver;
@@ -58,57 +62,61 @@ public final class SettingsEntryHook {
     private static final String ENTRY_TAG = "betterheybox_entry";
     private static final String EMBEDDED_SETTINGS_TAG = "betterheybox_embedded_settings";
 
-    /** 内嵌面板配置导出（系统「保存到」选择器）请求码 */
+    /** 内嵌面板配置导出*/
     private static final int REQUEST_EMBEDDED_EXPORT = 0x4248;
-    /** 内嵌面板配置导入（系统文件选择器）请求码 */
+    /** 内嵌面板配置导入 */
     private static final int REQUEST_EMBEDDED_IMPORT = 0x4249;
+    /** 内嵌面板日志导出*/
+    private static final int REQUEST_EMBEDDED_LOG_EXPORT = 0x424A;
 
-    /** 文件选择结果回调（onActivityResult Hook 分发） */
+    /** 文件选择结果回调 */
     private interface PickCallback {
         void onResult(Uri uri);
     }
 
-    /** 等待中的文件选择回调（单进程，同一时间只有一个面板在等结果） */
+    /** 等待中的文件选择回调 */
     private static PickCallback sPendingPick;
 
     private WeakReference<View> mSettingsPanel;
 
-        private static class SwitchDef {
+    private static class SwitchDef {
         final String title;
         final String desc;
         final String key;
         final boolean def;
         final boolean restart;
         final boolean clickRow;
-        final String editKey; // clickRow 时编辑的字符串配置 key（null 则不弹编辑框）
+        final String editKey; // clickRow 时编辑的字符串配置 key
         final boolean actionClearDaily; // clickRow 动作：清除每日打卡状态并重试
         final boolean actionChannel; // clickRow 动作：选择分享渠道
         final boolean actionExport; // clickRow 动作：导出配置
         final boolean actionImport; // clickRow 动作：导入配置
+        final boolean actionExportLog; // clickRow 动作：导出日志
+        final boolean actionRuntimeStatus; // clickRow 动作：查看运行状态（仅 Debug 构建显示）
         SwitchDef(String title, String desc, String key, boolean def, boolean restart) {
-            this(title, desc, key, def, restart, false, null, false, false, false, false);
+            this(title, desc, key, def, restart, false, null, false, false, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart, boolean clickRow) {
-            this(title, desc, key, def, restart, clickRow, null, false, false, false, false);
+            this(title, desc, key, def, restart, clickRow, null, false, false, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart, boolean clickRow, String editKey) {
-            this(title, desc, key, def, restart, clickRow, editKey, false, false, false, false);
+            this(title, desc, key, def, restart, clickRow, editKey, false, false, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart,
                   boolean clickRow, String editKey, boolean actionClearDaily) {
-            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, false, false, false);
+            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, false, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart,
                   boolean clickRow, String editKey, boolean actionClearDaily, boolean actionChannel) {
-            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, actionChannel, false, false);
+            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, actionChannel, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart,
                   boolean clickRow, boolean actionExport, boolean actionImport) {
-            this(title, desc, key, def, restart, clickRow, null, false, false, actionExport, actionImport);
+            this(title, desc, key, def, restart, clickRow, null, false, false, actionExport, actionImport, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart,
                   boolean clickRow, String editKey, boolean actionClearDaily, boolean actionChannel,
-                  boolean actionExport, boolean actionImport) {
+                  boolean actionExport, boolean actionImport, boolean actionExportLog, boolean actionRuntimeStatus) {
             this.title = title;
             this.desc = desc;
             this.key = key;
@@ -120,6 +128,8 @@ public final class SettingsEntryHook {
             this.actionChannel = actionChannel;
             this.actionExport = actionExport;
             this.actionImport = actionImport;
+            this.actionExportLog = actionExportLog;
+            this.actionRuntimeStatus = actionRuntimeStatus;
         }
     }
 
@@ -156,14 +166,13 @@ public final class SettingsEntryHook {
                     new SwitchDef("伪装通知权限", "让小黑盒认为通知已开启，获得签到加成（不真正申请权限）", App.KEY_FAKE_NOTIFICATION, false, false),
                     new SwitchDef("屏蔽更新", "屏蔽小黑盒更新入口", App.KEY_BLOCK_UPDATE, false, false),
                     new SwitchDef("记录日志", "开启后自动记录模块日志到文件", App.KEY_LOG, false, false),
+                    new SwitchDef("导出日志", "把模块日志保存为文本文件（含运行状态检查点）", null, false, false, true, null, false, false, false, false, true, false),
             }),
             new SettingsGroup("配置备份", new SwitchDef[]{
                     new SwitchDef("导出配置", "把所有开关和分享链接保存为 JSON 文件", null, false, false, true, true, false),
                     new SwitchDef("导入配置", "从 JSON 文件恢复全部设置", null, false, false, true, false, true),
             }),
     };
-
-    /** 底部导航栏隐藏分组：tab 名称按小黑盒字符串资源动态解析（版本自适应：发现/游戏库/社区/加号） */
     private static SettingsGroup buildBottomTabGroup(Activity activity) {
         String home = MainModule.getHeyboxTabLabel(activity, "discover", "发现");
         String store = MainModule.getHeyboxTabLabel(activity, "game_store", "游戏库");
@@ -176,13 +185,35 @@ public final class SettingsEntryHook {
         });
     }
 
-    /** 完整分组列表（含动态底栏组） */
+    /** 完整分组列表*/
     private static SettingsGroup[] getSettingsGroups(Activity activity) {
         SettingsGroup[] base = BASE_GROUPS;
+        if (BuildFlags.DEBUG) {
+            base = withRuntimeStatusGroup(base);
+        }
         SettingsGroup[] all = new SettingsGroup[base.length + 1];
         all[0] = buildBottomTabGroup(activity);
         System.arraycopy(base, 0, all, 1, base.length);
         return all;
+    }
+
+    /** Debug 构建：往「通用」分组追加「运行状态」行 */
+    private static SettingsGroup[] withRuntimeStatusGroup(SettingsGroup[] groups) {
+        SettingsGroup[] out = new SettingsGroup[groups.length];
+        for (int i = 0; i < groups.length; i++) {
+            SettingsGroup g = groups[i];
+            if ("通用".equals(g.title)) {
+                SwitchDef[] items = new SwitchDef[g.items.length + 1];
+                System.arraycopy(g.items, 0, items, 0, g.items.length);
+                items[g.items.length] = new SwitchDef(
+                        "运行状态", "查看模块运行检查点（仅调试版显示）", null, false, false,
+                        true, null, false, false, false, false, false, true);
+                out[i] = new SettingsGroup(g.title, items);
+            } else {
+                out[i] = g;
+            }
+        }
+        return out;
     }
     private void hookSettingsEntry(ClassLoader cl) {
         try {
@@ -211,15 +242,13 @@ public final class SettingsEntryHook {
                 }
                 return result;
             });
-            // 内嵌面板导入/导出依赖文件选择结果，需接管 onActivityResult
+            // 内嵌面板导入/导出依赖文件选择结果
             hookActivityResult(clazz);
             module.logd(Log.INFO, module.TAG, "✔ 设置页入口 Hook 已安装 (" + setupMethod.getName() + "+retry)");
         } catch (Throwable t) {
             module.logd(Log.ERROR, module.TAG, "✘ 设置页入口 Hook 失败", t);
         }
     }
-
-    /** Hook onActivityResult：把内嵌面板发起的文件选择结果分发给 {@link #sPendingPick} */
     private void hookActivityResult(Class<?> clazz) {
         try {
             Method m = findOnActivityResult(clazz);
@@ -249,7 +278,6 @@ public final class SettingsEntryHook {
         }
     }
 
-    /** 从设置页 Activity 向上找 onActivityResult 方法（优先命中最近的覆写） */
     private Method findOnActivityResult(Class<?> clazz) {
         Class<?> c = clazz;
         while (c != null && c != Object.class) {
@@ -264,7 +292,8 @@ public final class SettingsEntryHook {
 
     /** 文件选择结果分发：仅处理内嵌面板的请求码，其余原样放行 */
     private void handleEmbeddedPickResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode != REQUEST_EMBEDDED_EXPORT && requestCode != REQUEST_EMBEDDED_IMPORT) {
+        if (requestCode != REQUEST_EMBEDDED_EXPORT && requestCode != REQUEST_EMBEDDED_IMPORT
+                && requestCode != REQUEST_EMBEDDED_LOG_EXPORT) {
             return;
         }
         PickCallback cb = sPendingPick;
@@ -625,6 +654,12 @@ public final class SettingsEntryHook {
                 } else if (def.actionImport) {
                     itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
                             .invoke(item, (View.OnClickListener) v -> startEmbeddedImport(activity));
+                } else if (def.actionExportLog) {
+                    itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
+                            .invoke(item, (View.OnClickListener) v -> startEmbeddedLogExport(activity));
+                } else if (def.actionRuntimeStatus) {
+                    itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
+                            .invoke(item, (View.OnClickListener) v -> showEmbeddedRuntimeStatus(activity));
                 } else {
                     itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
                             .invoke(item, (View.OnClickListener) v -> showEditLinkDialog(activity, def.title, editKey));
@@ -929,7 +964,6 @@ public final class SettingsEntryHook {
         }
     }
 
-    /** 把内嵌面板当前配置写入用户选择的导出文件 */
     private void writeEmbeddedExport(Activity activity, Uri uri, String json) {
         try {
             ContentResolver resolver = activity.getContentResolver();
@@ -950,7 +984,65 @@ public final class SettingsEntryHook {
         }
     }
 
-    /** 内嵌面板导入配置：先用小黑盒原生弹窗确认覆盖，再打开系统文件选择器（结果经 onActivityResult Hook 回调读取） */
+    private void startEmbeddedLogExport(final Activity activity) {
+        String logPath = LogRecorder.getLogFilePath();
+        File logFile = logPath != null ? new File(logPath) : null;
+        if (logFile == null || !logFile.exists() || logFile.length() == 0) {
+            Toast.makeText(activity, "暂无日志文件：请先开启「记录日志」，再打开一次小黑盒，然后回来导出",
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            sPendingPick = uri -> writeEmbeddedLogExport(activity, uri);
+            String fileName = "BetterHeybox日志_" + new SimpleDateFormat("yyMMdd_HHmmss", Locale.US)
+                    .format(new Date()) + ".txt";
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_TITLE, fileName);
+            activity.startActivityForResult(intent, REQUEST_EMBEDDED_LOG_EXPORT);
+        } catch (Throwable t) {
+            module.logd(Log.ERROR, module.TAG, "打开日志导出选择器失败: " + t);
+            Toast.makeText(activity, "导出失败，请重试", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void writeEmbeddedLogExport(Activity activity, Uri uri) {
+        try {
+            String content = LogExport.buildExportText(activity);
+            ContentResolver resolver = activity.getContentResolver();
+            OutputStream os = resolver.openOutputStream(uri);
+            if (os == null) {
+                Toast.makeText(activity, "导出失败，请重试", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            try (OutputStream out = os) {
+                out.write(content.getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+            LogRecorder.recordEvent("内嵌面板日志已导出: " + uri);
+            Toast.makeText(activity, "日志已导出", Toast.LENGTH_SHORT).show();
+        } catch (Throwable t) {
+            module.logd(Log.ERROR, module.TAG, "写入日志导出文件失败: " + t);
+            Toast.makeText(activity, "导出失败，请重试", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void showEmbeddedRuntimeStatus(Activity activity) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("构建类型: ").append(BuildFlags.DEBUG ? "debug" : "release").append('\n');
+            sb.append('\n').append("—— 本进程（小黑盒）运行检查点 ——\n")
+                    .append(Checkpoint.dump(150));
+            new AlertDialog.Builder(activity)
+                    .setTitle("运行状态")
+                    .setMessage(sb.toString())
+                    .setPositiveButton("确定", null)
+                    .show();
+        } catch (Throwable t) {
+            module.logd(Log.WARN, module.TAG, "运行状态弹窗失败: " + t);
+        }
+    }
     private void startEmbeddedImport(final Activity activity) {
         try {
             ClassLoader cl = activity.getClassLoader();
@@ -1010,7 +1102,6 @@ public final class SettingsEntryHook {
         }
     }
 
-    /** 导入确认回退：小黑盒原生弹窗不可用时使用系统弹窗 */
     private void showEmbeddedImportConfirmFallback(final Activity activity) {
         try {
             new AlertDialog.Builder(activity)
@@ -1035,11 +1126,6 @@ public final class SettingsEntryHook {
         }
     }
 
-    /**
-     * 读取用户选择的配置文件并应用：
-     * 开关写本地 HeyboxPrefs + 广播镜像到模块进程 RemotePreferences；字符串写本地 HeyboxPrefs。
-     * 成功后重渲染面板刷新开关显示。
-     */
     private void readEmbeddedImport(final Activity activity, Uri uri) {
         try {
             ContentResolver resolver = activity.getContentResolver();
@@ -1068,7 +1154,6 @@ public final class SettingsEntryHook {
             }
             LogRecorder.recordEvent("内嵌面板配置已导入: " + result.applied + " 项, uri=" + uri);
             Toast.makeText(activity, "配置已导入（" + result.applied + " 项）", Toast.LENGTH_SHORT).show();
-            // 重渲染面板，让开关显示导入后的值（面板已关闭则不弹回）
             View panel = mSettingsPanel == null ? null : mSettingsPanel.get();
             if (panel != null && panel.getParent() != null) {
                 showEmbeddedSettings(activity);

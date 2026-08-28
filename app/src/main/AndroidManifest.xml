@@ -19,13 +19,7 @@
         android:description="@string/module_description"
         tools:ignore="MissingApplicationIcon">
 
-        <!--
-          模块设置界面。由小黑盒内嵌入口使用；不提供独立桌面启动入口。
-        -->
-        <activity
-            android:name=".SettingsActivity"
-            android:exported="true"
-            android:theme="@android:style/Theme.DeviceDefault.DayNight" />
+        <!-- 设置仅通过小黑盒内嵌面板提供（SettingsEntryHook 注入），模块无独立界面。 -->
 
         <receiver
             android:name=".PreferenceReceiver"

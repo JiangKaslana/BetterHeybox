@@ -89,6 +89,15 @@ public final class LogRecorder {
         return new File(new File(ctx.getFilesDir(), DIR_NAME), FILE_NAME).getAbsolutePath();
     }
 
+    /** 滚动备份日志（log.1.txt）路径，供导出日志时一并打包 */
+    public static String getLogBackupFilePath() {
+        Context ctx = sContext != null ? sContext : resolveApplicationContext();
+        if (ctx == null) {
+            return null;
+        }
+        return new File(new File(ctx.getFilesDir(), DIR_NAME), BACKUP_NAME).getAbsolutePath();
+    }
+
     private static void recordLocked(int level, String tag, String msg, Throwable tr) {
         synchronized (LOCK) {
             try {

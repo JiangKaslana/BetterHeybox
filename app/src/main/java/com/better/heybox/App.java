@@ -77,6 +77,9 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     /** 日志开关：开启后自动记录模块日志到文件 */
     public static final String KEY_LOG = "log";
 
+    /** 运行状态检查点（Debug 构建：小黑盒进程 Hook 安装完成后写入，设置页跨进程读取查看/导出） */
+    public static final String KEY_RUNTIME_STATUS = "runtime_status";
+
     /** 框架服务实例（volatile 保证跨线程可见） */
     private static volatile XposedService sService;
 
@@ -95,6 +98,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
         super.onCreate();
         sApp = this;
         LogRecorder.setContext(this);
+        Checkpoint.mark("模块进程启动 (pid=%d)", android.os.Process.myPid());
         Log.i(TAG, "App.onCreate: pid=" + android.os.Process.myPid());
         XposedServiceHelper.registerListener(this);
         Log.i(TAG, "已注册 XposedService 监听器");
@@ -103,6 +107,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     @Override
     public void onServiceBind(XposedService service) {
         sService = service;
+        Checkpoint.mark("XposedService 已绑定: %s", describe(service));
         LogRecorder.setEnabled(readBoolean(KEY_LOG, false));
         LogRecorder.recordEvent("XposedService 已绑定: " + describe(service));
         SharedPreferences pending = getSharedPreferences(PENDING_PREFS, MODE_PRIVATE);
@@ -114,6 +119,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
 
     @Override
     public void onServiceDied(XposedService service) {
+        Checkpoint.mark("XposedService 断开: %s", describe(service));
         Log.w(TAG, "XposedService 已断开: service=" + describe(service)
                 + ", current=" + describe(sService));
         sService = null;

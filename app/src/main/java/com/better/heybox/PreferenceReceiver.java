@@ -60,6 +60,7 @@ public class PreferenceReceiver extends BroadcastReceiver {
         String action = intent.getAction();
         String key = intent.getStringExtra(EXTRA_KEY);
         boolean value = intent.getBooleanExtra(EXTRA_VALUE, false);
+        Checkpoint.mark("广播接收: action=%s key=%s value=%s", action, key, value);
         Log.i("BetterHeybox", "广播接收: action=" + action + ", key=" + key
                 + ", value=" + value + ", pid=" + android.os.Process.myPid());
         if (!ACTION_SET_BOOLEAN.equals(action)) {
