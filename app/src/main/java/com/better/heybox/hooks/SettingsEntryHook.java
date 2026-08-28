@@ -42,6 +42,8 @@ import com.better.heybox.ConfigBackup;
 import com.better.heybox.HeyboxPrefs;
 import com.better.heybox.LogExport;
 import com.better.heybox.LogRecorder;
+import com.better.heybox.ThemeUtils;
+import com.better.heybox.VideoDownloadManager;
 import com.better.heybox.MainModule;
 import com.better.heybox.PreferenceReceiver;
 
@@ -68,6 +70,8 @@ public final class SettingsEntryHook {
     private static final int REQUEST_EMBEDDED_IMPORT = 0x4249;
     /** 内嵌面板日志导出*/
     private static final int REQUEST_EMBEDDED_LOG_EXPORT = 0x424A;
+    /** 视频保存位置选择（系统文件夹选择器） */
+    private static final int REQUEST_PICK_SAVE_DIR = 0x424B;
 
     /** 文件选择结果回调 */
     private interface PickCallback {
@@ -93,30 +97,46 @@ public final class SettingsEntryHook {
         final boolean actionImport; // clickRow 动作：导入配置
         final boolean actionExportLog; // clickRow 动作：导出日志
         final boolean actionRuntimeStatus; // clickRow 动作：查看运行状态（仅 Debug 构建显示）
+        final boolean actionPickDir; // clickRow 动作：选择视频保存文件夹（系统 SAF 选择器）
+        final boolean actionDownloadManager; // clickRow 动作：打开下载管理页
         SwitchDef(String title, String desc, String key, boolean def, boolean restart) {
-            this(title, desc, key, def, restart, false, null, false, false, false, false, false, false);
+            this(title, desc, key, def, restart, false, null, false, false, false, false, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart, boolean clickRow) {
-            this(title, desc, key, def, restart, clickRow, null, false, false, false, false, false, false);
+            this(title, desc, key, def, restart, clickRow, null, false, false, false, false, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart, boolean clickRow, String editKey) {
-            this(title, desc, key, def, restart, clickRow, editKey, false, false, false, false, false, false);
+            this(title, desc, key, def, restart, clickRow, editKey, false, false, false, false, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart,
                   boolean clickRow, String editKey, boolean actionClearDaily) {
-            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, false, false, false, false, false);
+            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, false, false, false, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart,
                   boolean clickRow, String editKey, boolean actionClearDaily, boolean actionChannel) {
-            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, actionChannel, false, false, false, false);
+            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, actionChannel, false, false, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart,
                   boolean clickRow, boolean actionExport, boolean actionImport) {
-            this(title, desc, key, def, restart, clickRow, null, false, false, actionExport, actionImport, false, false);
+            this(title, desc, key, def, restart, clickRow, null, false, false, actionExport, actionImport, false, false, false, false);
         }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart,
                   boolean clickRow, String editKey, boolean actionClearDaily, boolean actionChannel,
                   boolean actionExport, boolean actionImport, boolean actionExportLog, boolean actionRuntimeStatus) {
+            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, actionChannel,
+                    actionExport, actionImport, actionExportLog, actionRuntimeStatus, false, false);
+        }
+        SwitchDef(String title, String desc, String key, boolean def, boolean restart,
+                  boolean clickRow, String editKey, boolean actionClearDaily, boolean actionChannel,
+                  boolean actionExport, boolean actionImport, boolean actionExportLog,
+                  boolean actionRuntimeStatus, boolean actionPickDir) {
+            this(title, desc, key, def, restart, clickRow, editKey, actionClearDaily, actionChannel,
+                    actionExport, actionImport, actionExportLog, actionRuntimeStatus, actionPickDir, false);
+        }
+        SwitchDef(String title, String desc, String key, boolean def, boolean restart,
+                  boolean clickRow, String editKey, boolean actionClearDaily, boolean actionChannel,
+                  boolean actionExport, boolean actionImport, boolean actionExportLog,
+                  boolean actionRuntimeStatus, boolean actionPickDir, boolean actionDownloadManager) {
             this.title = title;
             this.desc = desc;
             this.key = key;
@@ -130,6 +150,8 @@ public final class SettingsEntryHook {
             this.actionImport = actionImport;
             this.actionExportLog = actionExportLog;
             this.actionRuntimeStatus = actionRuntimeStatus;
+            this.actionPickDir = actionPickDir;
+            this.actionDownloadManager = actionDownloadManager;
         }
     }
 
@@ -149,6 +171,11 @@ public final class SettingsEntryHook {
                     new SwitchDef("屏蔽气泡广告", null, App.KEY_BUBBLE_AD, true, false),
                     new SwitchDef("屏蔽角标广告", null, App.KEY_CORNER_AD, true, false),
                     new SwitchDef("屏蔽推广贴", null, App.KEY_PROMOTE_AD, true, false),
+            }),
+            new SettingsGroup("视频下载", new SwitchDef[]{
+                    new SwitchDef("下载视频", "在支持的视频上显示下载入口，保存到你选择的文件夹（默认相册 Movies/BetterHeybox）", App.KEY_VIDEO_DOWNLOAD, true, false),
+                    new SwitchDef("保存位置", "点击选择保存文件夹（系统文件选择器），完成后通知会显示保存路径", null, false, false, true, null, false, false, false, false, false, false, true),
+                    new SwitchDef("自动转存 MP4", "HLS 分片下载合并后自动转封装为 MP4（无转码、无损，失败时保留 ts）", App.KEY_VIDEO_TO_MP4, true, false),
             }),
             new SettingsGroup("解除复制", new SwitchDef[]{
                     new SwitchDef("解除复制", "恢复系统标准文本选择", App.KEY_COPY_POST, true, false),
@@ -293,6 +320,10 @@ public final class SettingsEntryHook {
 
     /** 文件选择结果分发：仅处理内嵌面板的请求码，其余原样放行 */
     private void handleEmbeddedPickResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_PICK_SAVE_DIR) {
+            handleSaveDirResult(resultCode, data);
+            return;
+        }
         if (requestCode != REQUEST_EMBEDDED_EXPORT && requestCode != REQUEST_EMBEDDED_IMPORT
                 && requestCode != REQUEST_EMBEDDED_LOG_EXPORT) {
             return;
@@ -306,6 +337,92 @@ public final class SettingsEntryHook {
             cb.onResult(data.getData());
         } catch (Throwable t) {
             module.logd(Log.ERROR, module.TAG, "执行文件选择回调失败: " + t);
+        }
+    }
+
+    /** 保存位置选择结果：持久化授权并写入配置（空值 = 恢复默认 Movies/BetterHeybox） */
+    private void handleSaveDirResult(int resultCode, Intent data) {
+        Context context = mSettingsPanel != null && mSettingsPanel.get() != null
+                ? ((View) mSettingsPanel.get()).getContext() : null;
+        if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) {
+            return;
+        }
+        Uri treeUri = data.getData();
+        try {
+            if (context != null) {
+                context.getContentResolver().takePersistableUriPermission(treeUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            }
+        } catch (Throwable t) {
+            module.logd(Log.WARN, module.TAG, "持久化保存位置授权失败: " + t);
+        }
+        HeyboxPrefs.setString(App.KEY_VIDEO_DIR, treeUri.toString());
+        String name = context != null ? queryDirDisplayName(context, treeUri) : null;
+        Toast.makeText(context, "保存位置已设置：" + (name != null ? name : treeUri),
+                Toast.LENGTH_LONG).show();
+        LogRecorder.recordEvent("视频保存位置已设置: " + treeUri);
+    }
+
+    /** 查询文件夹显示名（查询失败返回 null） */
+    private String queryDirDisplayName(Context context, Uri treeUri) {
+        try {
+            android.database.Cursor c = context.getContentResolver().query(
+                    treeUri,
+                    new String[]{android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME},
+                    null, null, null);
+            if (c != null) {
+                try {
+                    if (c.moveToFirst()) {
+                        return c.getString(0);
+                    }
+                } finally {
+                    c.close();
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    /** 「保存位置」行点击：已设置时给「换目录 / 恢复默认」，否则直接打开系统文件夹选择器 */
+    private void showSaveDirDialog(Activity activity) {
+        String current = HeyboxPrefs.getString(App.KEY_VIDEO_DIR, null);
+        if (current == null || !current.startsWith("content:")) {
+            startDirPicker(activity);
+            return;
+        }
+        try {
+            String name = queryDirDisplayName(activity, Uri.parse(current));
+            new AlertDialog.Builder(activity)
+                    .setTitle("保存位置")
+                    .setMessage("当前：" + (name != null ? name : current)
+                            + "\n\n默认位置为相册 Movies/BetterHeybox")
+                    .setPositiveButton("选择其他文件夹", (d, w) -> startDirPicker(activity))
+                    .setNeutralButton("恢复默认", (d, w) -> {
+                        HeyboxPrefs.setString(App.KEY_VIDEO_DIR, "");
+                        Toast.makeText(activity, "已恢复默认：Movies/BetterHeybox",
+                                Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+        } catch (Throwable t) {
+            startDirPicker(activity);
+        }
+    }
+
+    /** 调起系统文件夹选择器（SAF），结果经 onActivityResult Hook 回调 */
+    private void startDirPicker(Activity activity) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+            activity.startActivityForResult(intent, REQUEST_PICK_SAVE_DIR);
+        } catch (Throwable t) {
+            module.logd(Log.ERROR, module.TAG, "打开文件夹选择器失败: " + t);
+            Toast.makeText(activity, "打开文件夹选择器失败", Toast.LENGTH_SHORT).show();
         }
     }
         private void insertSettingsEntryWithRetry(final Activity activity, final int attempt) {
@@ -658,6 +775,10 @@ public final class SettingsEntryHook {
                 } else if (def.actionExportLog) {
                     itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
                             .invoke(item, (View.OnClickListener) v -> startEmbeddedLogExport(activity));
+                } else if (def.actionPickDir) {
+                    itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
+                            .invoke(item, (View.OnClickListener) v -> showSaveDirDialog(activity));
+
                 } else if (def.actionRuntimeStatus) {
                     itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
                             .invoke(item, (View.OnClickListener) v -> showEmbeddedRuntimeStatus(activity));
@@ -1203,6 +1324,155 @@ public final class SettingsEntryHook {
             TextSelectHook.refresh();
         }
         return localOk;
+    }
+
+    /* ==== 下载管理页复用的宿主组件工厂（包内可见） ==== */
+
+    /** 解析宿主资源 id */
+    static int hostResId(Context context, String name, String type, int fallback) {
+        try {
+            int id = context.getResources().getIdentifier(name, type, MainModule.TARGET_PKG);
+            return id != 0 ? id : fallback;
+        } catch (Throwable t) {
+            return fallback;
+        }
+    }
+
+    /** 解析宿主 day_night 颜色资源（跟随深浅色） */
+    static int hostColor(Context context, String name, int fallback) {
+        int id = hostResId(context, name, "color", 0);
+        if (id != 0) {
+            try {
+                return context.getColor(id);
+            } catch (Throwable ignored) {
+            }
+        }
+        return fallback;
+    }
+
+    /**
+     * 创建宿主卡片（8dp 圆角、无阴影），返回卡片本体；行内容通过
+     * {@code ((ViewGroup) card.getTag())} 取出后 add 进去（content 已挂进卡片，
+     * 直接返回 content 会让调用方二次挂载时触发 child already has a parent）。
+     */
+    static ViewGroup hostCard(Context context) {
+        try {
+            ClassLoader cl = context.getClassLoader();
+            Class<?> cardCls = Class.forName("androidx.cardview.widget.CardView", false, cl);
+            Object card = cardCls.getConstructor(Context.class).newInstance(context);
+            float density = context.getResources().getDisplayMetrics().density;
+            cardCls.getMethod("setRadius", float.class).invoke(card, 8f * density);
+            cardCls.getMethod("setCardElevation", float.class).invoke(card, 0f);
+            try {
+                cardCls.getMethod("setMaxCardElevation", float.class).invoke(card, 0f);
+            } catch (Throwable ignored) {
+            }
+            LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            int m = ThemeUtils.dp(context, 12);
+            cardLp.setMargins(m, ThemeUtils.dp(context, 8), m, 0);
+            ((View) card).setLayoutParams(cardLp);
+            LinearLayout content = new LinearLayout(context);
+            content.setOrientation(LinearLayout.VERTICAL);
+            content.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            ((ViewGroup) card).addView(content);
+            content.setTag(card);
+            return (ViewGroup) card;
+        } catch (Throwable t) {
+            // 宿主组件不可用：退化为普通容器（自挂载，行为与上面一致）
+            LinearLayout fallback = new LinearLayout(context);
+            fallback.setOrientation(LinearLayout.VERTICAL);
+            fallback.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            fallback.setTag(fallback);
+            return fallback;
+        }
+    }
+
+    /** 创建宿主设置行（Text 型：标题 + 描述 + 右侧状态文本） */
+    static View hostTextItem(Context context, String title, String titleDesc,
+                             String rightDesc, boolean divider) throws Throwable {
+        ClassLoader cl = context.getClassLoader();
+        Class<?> itemCls = Class.forName(
+                "com.max.xiaoheihe.module.account.component.SettingItemView", false, cl);
+        Object item = itemCls.getConstructor(Context.class).newInstance(context);
+        itemCls.getMethod("setTitle", String.class).invoke(item, title);
+        if (titleDesc != null) {
+            itemCls.getMethod("setTitleDesc", String.class).invoke(item, titleDesc);
+        }
+        Class<?> typeEnum = Class.forName(
+                "com.max.xiaoheihe.module.account.component.SettingItemView$Type", false, cl);
+        itemCls.getMethod("setRightType", typeEnum)
+                .invoke(item, Enum.valueOf((Class) typeEnum, "Text"));
+        if (rightDesc != null) {
+            try {
+                itemCls.getMethod("setRightDesc", String.class).invoke(item, rightDesc);
+            } catch (Throwable ignored) {
+            }
+        }
+        itemCls.getMethod("setShowBottomDivider", boolean.class).invoke(item, divider);
+        int itemH = ThemeUtils.dp(context, titleDesc != null ? 58 : 48);
+        ((View) item).setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, itemH));
+        return (View) item;
+    }
+
+    /** 原地更新 Text 型行（不重建 View，保证点击不因列表刷新而丢失） */
+    static void updateTextItem(View row, String title, String titleDesc, String rightDesc) {
+        try {
+            Class<?> cls = row.getClass();
+            cls.getMethod("setTitle", String.class).invoke(row, title);
+            if (titleDesc != null) {
+                cls.getMethod("setTitleDesc", String.class).invoke(row, titleDesc);
+            }
+            if (rightDesc != null) {
+                try {
+                    cls.getMethod("setRightDesc", String.class).invoke(row, rightDesc);
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 原地更新 CheckBox 型行的勾选态 */
+    static void updateCheckItem(View row, boolean checked) {
+        try {
+            row.getClass()
+                    .getMethod("setCheckBoxChecked", boolean.class, boolean.class)
+                    .invoke(row, checked, false);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 创建宿主多选行（CheckBox 型），checked 为当前勾选态 */
+    static View hostCheckItem(Context context, String title, String titleDesc, boolean checked,
+                              CompoundButton.OnCheckedChangeListener listener, boolean divider)
+            throws Throwable {
+        ClassLoader cl = context.getClassLoader();
+        Class<?> itemCls = Class.forName(
+                "com.max.xiaoheihe.module.account.component.SettingItemView", false, cl);
+        Object item = itemCls.getConstructor(Context.class).newInstance(context);
+        itemCls.getMethod("setTitle", String.class).invoke(item, title);
+        if (titleDesc != null) {
+            itemCls.getMethod("setTitleDesc", String.class).invoke(item, titleDesc);
+        }
+        Class<?> typeEnum = Class.forName(
+                "com.max.xiaoheihe.module.account.component.SettingItemView$Type", false, cl);
+        itemCls.getMethod("setRightType", typeEnum)
+                .invoke(item, Enum.valueOf((Class) typeEnum, "CheckBox"));
+        itemCls.getMethod("setCheckBoxChecked", boolean.class, boolean.class)
+                .invoke(item, checked, false);
+        Class<?> listenerCls = Class.forName(
+                "android.widget.CompoundButton$OnCheckedChangeListener", false, cl);
+        itemCls.getMethod("setOnCheckButtonCheckedChangeListener", listenerCls)
+                .invoke(item, listener);
+        itemCls.getMethod("setShowBottomDivider", boolean.class).invoke(item, divider);
+        int itemH = ThemeUtils.dp(context, titleDesc != null ? 58 : 48);
+        ((View) item).setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, itemH));
+        return (View) item;
     }
 
     private View buildEntryCard(final Activity activity) {

@@ -133,29 +133,7 @@ public final class CustomTextSelection {
      * 浅色取 600、深色取 200），其次主题 colorAccent，最后回退品牌蓝。
      */
     private static int resolveAccent(Context context) {
-        try {
-            if (Build.VERSION.SDK_INT >= 31) {
-                String shade = isDarkTheme(context) ? "600" : "200";
-                int resId = context.getResources().getIdentifier(
-                        "system_accent1_" + shade, "color", "android");
-                if (resId != 0) {
-                    int color = context.getColor(resId);
-                    if (Color.alpha(color) == 255) {
-                        return color;
-                    }
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-        try {
-            TypedValue value = new TypedValue();
-            if (context.getTheme().resolveAttribute(android.R.attr.colorAccent, value, true)
-                    && value.data != 0) {
-                return value.data;
-            }
-        } catch (Throwable ignored) {
-        }
-        return DEFAULT_ACCENT;
+        return ThemeUtils.resolveAccent(context);
     }
 
     private static boolean isDarkTheme(Context context) {

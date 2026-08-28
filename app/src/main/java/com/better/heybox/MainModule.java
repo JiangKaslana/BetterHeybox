@@ -20,6 +20,7 @@ import com.better.heybox.hooks.ImageShareHook;
 import com.better.heybox.hooks.PromotePostHook;
 import com.better.heybox.hooks.SettingsEntryHook;
 import com.better.heybox.hooks.TextSelectHook;
+import com.better.heybox.hooks.VideoDownloadHook;
 
 /**
  * BetterHeybox 模块入口（libxposed Modern API 102）。
@@ -90,6 +91,7 @@ public class MainModule extends XposedModule {
         installHook("推广贴", new PromotePostHook(this)::install, cl);
         installHook("文本选择", new TextSelectHook(this)::install, cl);
         installHook("图片分享", new ImageShareHook(this)::install, cl);
+        installHook("视频下载", new VideoDownloadHook(this)::install, cl);
         installHook("每日任务", ignored -> {
             dailyTaskHook = new DailyTaskHook(this);
             dailyTaskHook.install(ignored);

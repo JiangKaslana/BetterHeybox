@@ -42,6 +42,26 @@
   下载当前图片后**优先保存到系统相册**（可被相册真正查看、可被任意 App 分享），
   自动识别 jpg/png/gif/webp/bmp 真实格式并修正 MIME；可通过「系统分享图片」开关关闭
 
+### 视频下载
+
+- **下载入口**：视频帖右上角圆形 Monet 渐变悬浮按钮
+- **底部下载面板**：
+  - 准备：标题 / 来源 / 预计大小 → 「开始下载」
+  - 下载中：实时百分比、已下载/总大小、当前速度 → 「暂停下载」「取消下载」
+  - 暂停：「继续下载」
+  - 完成：保存路径 → 「播放」「分享」「完成」
+  - 失败：错误原因 → 「重新下载」
+- **后台下载**：面板可随时关闭，下载继续进行；悬浮按钮进度环持续反馈
+- **全类型视频**：正文 / 信息流 / 故事 / 游戏卡片均可；mp4 直链与 HLS（m3u8）分片流均支持
+- **断点续传**  
+- **自动转封装 MP4**：HLS 合并后自动无损转封装为 MP4
+- **智能命名**：文件名优先使用**帖子标题**，HLS 通用名（segs/index）自动回退时间戳；
+  重名自动加 `(n)` 后缀，绝不覆盖
+- **保存位置**：默认相册 `Movies/BetterHeybox`；设置「保存位置」可调起**系统文件选择器**
+  选择任意文件夹，完成通知显示实际保存路径
+- **通知栏反馈**：进度（含暂停/取消）、完成（播放/分享/删除 + 保存路径）、失败（重试/取消）
+- **系统分享**：完成后一键分享视频文件  
+
 ### 每日任务
 
 - **自动完成每日分享任务**：自动完成小黑盒每日任务的 **3 种分享任务**
@@ -95,7 +115,9 @@ app/src/main/
 │   ├── App.java                 # Application：连接框架服务、RemotePreferences 存取
 │   ├── SettingsActivity.java    # 模块独立设置界面
 │   ├── HeyboxPrefs.java         # 小黑盒进程本地配置存储（配置文件放小黑盒目录）
+│   ├── ThemeUtils.java          # 共享主题工具：Monet 动态取色 / surface 色板 / 设计 token
 │   ├── LogRecorder.java         # 文件日志记录器（日志开关）
+│   ├── VideoDownloadManager.java # 视频下载：任务状态机/注册表/断点续传/HLS 分片/mp4 转封装/保存/通知
 │   ├── PreferenceReceiver.java  # 设置写回广播接收（镜像同步 RemotePreferences）
 │   └── hooks/                   # 各功能 Hook 按模块拆分
 │       ├── GeneralHook.java     #   通用：版本检测 / 屏蔽更新 / 伪装通知权限
@@ -105,6 +127,7 @@ app/src/main/
 │       ├── PromotePostHook.java #   推广贴屏蔽
 │       ├── TextSelectHook.java  #   解除复制 / 标准文本选择 / 跨行选择
 │       ├── ImageShareHook.java  #   图片系统分享（优先保存系统相册）
+│       ├── VideoDownloadHook.java #   视频下载：URL 捕获 + 圆形下载按钮 + 底部下载面板
 │       └── DailyTaskHook.java   #   每日任务：3 种分享类型自动完成
 ├── res/                         # 设置页布局 / 字符串 / drawable
 └── resources/META-INF/xposed/   # 模块声明

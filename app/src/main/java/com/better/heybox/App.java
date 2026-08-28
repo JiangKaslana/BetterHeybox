@@ -78,6 +78,15 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     /** 伪装授予通知权限：让小黑盒认为通知已开启，获得签到加成（不真正申请权限） */
     public static final String KEY_FAKE_NOTIFICATION = "fake_notification";
 
+    /** 视频下载：在支持的视频（mp4 直链等）上显示下载入口 */
+    public static final String KEY_VIDEO_DOWNLOAD = "video_download";
+
+    /** 视频下载保存目录：相册 Movies/ 下的子目录名（默认 BetterHeybox） */
+    public static final String KEY_VIDEO_DIR = "video_download_dir";
+
+    /** 视频下载：HLS/TS 下载完成后自动转封装为 MP4（默认开，失败保留 ts） */
+    public static final String KEY_VIDEO_TO_MP4 = "video_download_to_mp4";
+
     /** 日志开关：开启后自动记录模块日志到文件 */
     public static final String KEY_LOG = "log";
 
