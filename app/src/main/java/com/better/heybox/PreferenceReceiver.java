@@ -46,6 +46,7 @@ public class PreferenceReceiver extends BroadcastReceiver {
             App.KEY_HIDE_TAB_GAME,
             App.KEY_HIDE_ADD,
             App.KEY_COPY_POST,
+            App.KEY_CUSTOM_TEXT_SELECT,
             App.KEY_BLOCK_UPDATE,
             App.KEY_SYSTEM_SHARE,
             App.KEY_LOG

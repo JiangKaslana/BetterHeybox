@@ -152,6 +152,7 @@ public final class SettingsEntryHook {
             }),
             new SettingsGroup("解除复制", new SwitchDef[]{
                     new SwitchDef("解除复制", "恢复系统标准文本选择", App.KEY_COPY_POST, true, false),
+                    new SwitchDef("自绘制文本选择", "选区、高亮与复制菜单全部由模块自绘，不触发系统/小黑盒选择 UI（需开启「解除复制」）", App.KEY_CUSTOM_TEXT_SELECT, false, false),
                     new SwitchDef("系统分享图片", "在图片长按菜单中打开系统分享", App.KEY_SYSTEM_SHARE, true, false),
             }),
             new SettingsGroup("每日任务", new SwitchDef[]{
@@ -686,6 +687,11 @@ public final class SettingsEntryHook {
                         if (writeEmbeddedBoolean(activity, def.key, isChecked) && def.restart) {
                             showRestartAppDialog(activity, cl);
                         }
+                        // 文本选择相关开关：对已展示的帖子立即重放，无需重启即运行时生效
+                        if (App.KEY_CUSTOM_TEXT_SELECT.equals(def.key)
+                                || App.KEY_COPY_POST.equals(def.key)) {
+                            TextSelectHook.refresh();
+                        }
                     } catch (Throwable t) {
                         module.logd(Log.ERROR, module.TAG, "开关监听回调异常: " + def.title, t);
                     }
@@ -1191,6 +1197,10 @@ public final class SettingsEntryHook {
             module.logd(Log.INFO, module.TAG, "远程镜像广播已发送: key=" + key + ", value=" + value);
         } catch (Throwable t) {
             module.logd(Log.WARN, module.TAG, "远程镜像广播失败（本地配置已生效，不影响使用）: " + key, t);
+        }
+        // 文本选择相关开关（含配置导入路径）：对已展示的帖子立即重放，运行时生效
+        if (App.KEY_CUSTOM_TEXT_SELECT.equals(key) || App.KEY_COPY_POST.equals(key)) {
+            TextSelectHook.refresh();
         }
         return localOk;
     }

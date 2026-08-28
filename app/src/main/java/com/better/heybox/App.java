@@ -47,6 +47,10 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     public static final String KEY_HIDE_TAB_GAME = "hide_tab_game";
     public static final String KEY_HIDE_ADD = "hide_add";
     public static final String KEY_COPY_POST = "copy_post";
+
+    /** 自绘制文本选择：由模块自行实现选区/高亮/复制，绕过小黑盒与系统原生选择 UI */
+    public static final String KEY_CUSTOM_TEXT_SELECT = "custom_text_select";
+
     public static final String KEY_BLOCK_UPDATE = "block_update";
     public static final String KEY_SYSTEM_SHARE = "system_share";
 
