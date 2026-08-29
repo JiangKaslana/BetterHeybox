@@ -23,29 +23,12 @@ import com.better.heybox.hooks.ShareLinkPurifyHook;
 import com.better.heybox.hooks.TextSelectHook;
 import com.better.heybox.hooks.VideoDownloadHook;
 
-/**
- * BetterHeybox 模块入口（libxposed Modern API 102）。
- * 本类只保留：模块生命周期，Hook 安装编排
- *   {@link GeneralHook}    通用：版本检测 / 屏蔽更新
- *   {@link AdFilterHook}   广告过滤：开屏 / 信息流 / 气泡 / 角标
- *   {@link SettingsEntryHook} 设置页入口注入 + 内嵌设置面板
- *   {@link BottomTabHook}  底部导航栏隐藏
- *   {@link PromotePostHook} 推广贴屏蔽
- *   {@link TextSelectHook} 解除复制 / 标准文本选择 / 跨行选择修复
- *   {@link ImageShareHook} 图片系统分享
- */
+/** BetterHeybox libxposed module entry (Modern API 102). */
 public class MainModule extends XposedModule {
 
-    /** 日志 TAG */
     public static final String TAG = "BetterHeybox";
-
-    /** 每日任务 Hook 实例 */
     private com.better.heybox.hooks.DailyTaskHook dailyTaskHook;
-
-    /** 目标应用包名 */
     public static final String TARGET_PKG = "com.max.xiaoheihe";
-
-    /** 目标小黑盒主版本 */
     public static final String TARGET_HEYBOX_VERSION = "1.3.393";
     public static final Set<String> SUPPORTED_HEYBOX_VERSIONS =
             Collections.unmodifiableSet(new LinkedHashSet<>(Arrays.asList(
@@ -64,7 +47,6 @@ public class MainModule extends XposedModule {
 
     @Override
     public boolean onHotReloading(HotReloadingParam param) {
-        // 允许热重载
         logd(Log.INFO, TAG, "允许热重载");
         return true;
     }
@@ -80,6 +62,7 @@ public class MainModule extends XposedModule {
             installHooks(param);
         }
     }
+
     private void installHooks(PackageReadyParam param) {
         ClassLoader cl = param.getClassLoader();
         Checkpoint.mark(">>> 开始安装 Hook");
@@ -103,9 +86,11 @@ public class MainModule extends XposedModule {
         logd(Log.INFO, TAG, "Hook 安装流程结束");
         stashRuntimeStatus();
     }
+
     private interface HookInstaller {
         void install(ClassLoader cl);
     }
+
     private void installHook(String label, HookInstaller installer, ClassLoader cl) {
         long t0 = SystemClock.elapsedRealtime();
         try {
@@ -114,10 +99,10 @@ public class MainModule extends XposedModule {
         } catch (Throwable t) {
             Checkpoint.mark("✘ %s Hook 安装失败: %s (%d ms)",
                     label, t, SystemClock.elapsedRealtime() - t0);
-            // Release 构建下 Checkpoint 是空操作，必须单独留 error 日志供排查
             logd(Log.ERROR, TAG, "✘ " + label + " Hook 安装失败", t);
         }
     }
+
     private void stashRuntimeStatus() {
         if (!BuildFlags.DEBUG) {
             return;
@@ -132,19 +117,35 @@ public class MainModule extends XposedModule {
             logd(Log.WARN, TAG, "运行状态检查点写入失败", t);
         }
     }
+
+    /**
+     * Resolve a setting from two writable surfaces: the in-Heybox panel and the
+     * standalone manager. The newest timestamp wins. For legacy values without
+     * timestamps, local Heybox preferences keep their historical precedence.
+     */
     public boolean isEnabled(String key, boolean def) {
-        if (HeyboxPrefs.contains(key)) {
-            return HeyboxPrefs.getBoolean(key, def);
-        }
+        boolean localExists = HeyboxPrefs.contains(key);
+        boolean localValue = localExists ? HeyboxPrefs.getBoolean(key, def) : def;
+        long localTs = localExists ? HeyboxPrefs.getTimestamp(key) : -1L;
+
         try {
-            SharedPreferences prefs = getRemotePreferences(App.PREFS_GROUP);
-            if (prefs != null && prefs.contains(key)) {
-                return prefs.getBoolean(key, def);
+            SharedPreferences remote = getRemotePreferences(App.PREFS_GROUP);
+            boolean remoteExists = remote != null && remote.contains(key);
+            if (!remoteExists) {
+                return localExists ? localValue : def;
             }
-        } catch (Throwable t) {
+            boolean remoteValue = remote.getBoolean(key, def);
+            long remoteTs = remote.getLong(App.timestampKey(key), 0L);
+            if (!localExists) {
+                return remoteValue;
+            }
+            // Tie/legacy case intentionally favors the target-local value.
+            return remoteTs > localTs ? remoteValue : localValue;
+        } catch (Throwable ignored) {
+            return localExists ? localValue : def;
         }
-        return def;
     }
+
     public static String getHeyboxTabLabel(Context context, String resName, String def) {
         try {
             android.content.res.Resources res = null;
@@ -168,23 +169,31 @@ public class MainModule extends XposedModule {
         }
         return def;
     }
+
     public String getString(String key, String def) {
-        if (HeyboxPrefs.contains(key)) {
-            return HeyboxPrefs.getString(key, def);
-        }
+        boolean localExists = HeyboxPrefs.contains(key);
+        String localValue = localExists ? HeyboxPrefs.getString(key, def) : def;
+        long localTs = localExists ? HeyboxPrefs.getTimestamp(key) : -1L;
         try {
-            SharedPreferences prefs = getRemotePreferences(App.PREFS_GROUP);
-            if (prefs != null && prefs.contains(key)) {
-                return prefs.getString(key, def);
+            SharedPreferences remote = getRemotePreferences(App.PREFS_GROUP);
+            boolean remoteExists = remote != null && remote.contains(key);
+            if (!remoteExists) {
+                return localExists ? localValue : def;
             }
-        } catch (Throwable t) {
+            String remoteValue = remote.getString(key, def);
+            long remoteTs = remote.getLong(App.timestampKey(key), 0L);
+            if (!localExists) {
+                return remoteValue;
+            }
+            return remoteTs > localTs ? remoteValue : localValue;
+        } catch (Throwable ignored) {
+            return localExists ? localValue : def;
         }
-        return def;
     }
 
     public void logd(int level, String tag, String msg) {
         if (!BuildFlags.DEBUG && level < Log.ERROR) {
-            return; // 正式版只保留 error 级日志
+            return;
         }
         try {
             boolean logEnabled = isEnabled(App.KEY_LOG, false);
@@ -196,9 +205,10 @@ public class MainModule extends XposedModule {
         }
         log(level, tag, msg);
     }
+
     public void logd(int level, String tag, String msg, Throwable tr) {
         if (!BuildFlags.DEBUG && level < Log.ERROR) {
-            return; // 正式版只保留 error 级日志
+            return;
         }
         try {
             boolean logEnabled = isEnabled(App.KEY_LOG, false);
@@ -211,11 +221,10 @@ public class MainModule extends XposedModule {
         log(level, tag, msg, tr);
     }
 
-    /** dp 换算（内嵌设置面板布局使用） */
     public int dp(Context context, float value) {
         return (int) (value * context.getResources().getDisplayMetrics().density + 0.5f);
     }
-    
+
     public void clearDailyTaskAndRetry(android.app.Activity activity) {
         if (dailyTaskHook != null) {
             dailyTaskHook.clearTodayAndRetry(activity);
