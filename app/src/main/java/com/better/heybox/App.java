@@ -5,11 +5,13 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import io.github.libxposed.service.HookedProcess;
+import io.github.libxposed.service.HookedTarget;
+import io.github.libxposed.service.IXposedService;
 import io.github.libxposed.service.XposedService;
 import io.github.libxposed.service.XposedServiceHelper;
 import top.nkbe.npatch.remote.NPatchRemoteClient;
@@ -20,19 +22,14 @@ import top.nkbe.npatch.remote.NPatchRemoteClient;
  * <p>Settings normally use the standard libxposed {@link XposedService}. In
  * NPatch Local mode that callback may not be delivered to the standalone module
  * process, so a compatible NPatch Remote API connection is used as a fallback.
- * Both backends point at the same API-102 RemotePreferences contract.</p>
+ * Both backends point at the same API-102 service/RemotePreferences contract.</p>
  */
 public class App extends Application implements XposedServiceHelper.OnServiceListener {
 
     private static final String TAG = "BetterHeybox";
 
-    /** RemotePreferences group shared by LSPosed/NPatch and the injected target. */
     public static final String PREFS_GROUP = "betterheybox";
-
-    /** Local queue used until either libxposed or NPatch Remote is available. */
     public static final String PENDING_PREFS = "betterheybox_pending";
-
-    /** Per-key write timestamp used to reconcile manager settings with Heybox-local settings. */
     public static final String META_TIMESTAMP_PREFIX = "__bhx_ts__:";
 
     public static final String KEY_OPEN_SCREEN = "open_screen";
@@ -72,7 +69,6 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     private static volatile String sNPatchError;
 
     private static volatile App sApp;
-
     private static final List<OnServiceBoundListener> sBoundListeners = new ArrayList<>();
 
     public interface OnServiceBoundListener {
@@ -98,8 +94,6 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
         LogRecorder.setEnabled(readBoolean(KEY_LOG, false));
         LogRecorder.recordEvent("XposedService 已绑定: " + describe(service));
         SharedPreferences pending = getSharedPreferences(PENDING_PREFS, MODE_PRIVATE);
-        Logs.i(TAG, "XposedService 已绑定: service=" + describe(service)
-                + ", pendingCount=" + pending.getAll().size());
         PreferenceReceiver.tryFlush(this, pending);
         notifyServiceBound();
     }
@@ -107,8 +101,6 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     @Override
     public void onServiceDied(XposedService service) {
         Checkpoint.mark("XposedService 断开: %s", describe(service));
-        Logs.w(TAG, "XposedService 已断开: service=" + describe(service)
-                + ", current=" + describe(sService));
         sService = null;
         tryConnectNPatchRemote();
         notifyServiceBound();
@@ -120,9 +112,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
         if (service != null) {
             try {
                 SharedPreferences prefs = service.getRemotePreferences(PREFS_GROUP);
-                if (prefs != null) {
-                    return prefs;
-                }
+                if (prefs != null) return prefs;
             } catch (Throwable t) {
                 Logs.e(TAG, "libxposed RemotePreferences 获取异常", t);
             }
@@ -214,9 +204,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
 
     private static void queueBoolean(String key, boolean value, long timestamp) {
         App app = sApp;
-        if (app == null) {
-            return;
-        }
+        if (app == null) return;
         SharedPreferences pending = app.getSharedPreferences(PENDING_PREFS, MODE_PRIVATE);
         pending.edit()
                 .putBoolean(key, value)
@@ -247,13 +235,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
         if (app == null || sService != null || sNPatchClient != null || sNPatchConnecting) {
             return;
         }
-        try {
-            if (!NPatchRemoteClient.isAvailable(app)) {
-                return;
-            }
-        } catch (Throwable t) {
-            return;
-        }
+        if (!NPatchRemoteClient.isAvailable(app)) return;
 
         sNPatchConnecting = true;
         sNPatchError = null;
@@ -282,6 +264,133 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
                 });
     }
 
+    /**
+     * Query API 102 for the actual target process currently hooked by this module.
+     * Call from a background thread because this performs Binder IPC.
+     */
+    public static HookRuntimeStatus inspectHookRuntime(String targetPackage) {
+        XposedService standard = sService;
+        if (standard != null) {
+            try {
+                int api = standard.getApiVersion();
+                String framework = standard.getFrameworkName() + " " + standard.getFrameworkVersion();
+                if (api < XposedService.API_102) {
+                    return HookRuntimeStatus.connected("libxposed", framework, api,
+                            "服务 API 低于 102，无法查询运行目标");
+                }
+                List<HookedTarget> targets = standard.getRunningTargets();
+                for (HookedTarget target : targets) {
+                    if (matchesTarget(targetPackage, target.getProcessName())) {
+                        return HookRuntimeStatus.hooked(
+                                "libxposed", framework, api,
+                                target.getProcessName(), target.getPid(), target.getState().name());
+                    }
+                }
+                return HookRuntimeStatus.connected("libxposed", framework, api,
+                        "目标未运行，或当前进程未被模块 Hook");
+            } catch (Throwable t) {
+                return HookRuntimeStatus.error("libxposed", t);
+            }
+        }
+
+        NPatchRemoteClient npatch = sNPatchClient;
+        if (npatch != null) {
+            try {
+                IXposedService raw = npatch.getService();
+                int api = raw.getApiVersion();
+                String framework = raw.getFrameworkName() + " " + raw.getFrameworkVersion();
+                if (api < IXposedService.API_102) {
+                    return HookRuntimeStatus.connected("NPatch Remote", framework, api,
+                            "服务 API 低于 102，无法查询运行目标");
+                }
+                List<HookedProcess> targets = raw.getRunningTargets();
+                if (targets != null) {
+                    for (HookedProcess target : targets) {
+                        if (target != null && matchesTarget(targetPackage, target.processName)) {
+                            return HookRuntimeStatus.hooked(
+                                    "NPatch Remote", framework, api,
+                                    target.processName, target.pid, rawStateLabel(target.state));
+                        }
+                    }
+                }
+                return HookRuntimeStatus.connected("NPatch Remote", framework, api,
+                        "目标未运行，或当前进程未被模块 Hook");
+            } catch (Throwable t) {
+                return HookRuntimeStatus.error("NPatch Remote", t);
+            }
+        }
+
+        return HookRuntimeStatus.disconnected();
+    }
+
+    private static boolean matchesTarget(String packageName, String processName) {
+        if (packageName == null || processName == null) return false;
+        return processName.equals(packageName) || processName.startsWith(packageName + ":");
+    }
+
+    private static String rawStateLabel(int state) {
+        switch (state) {
+            case HookedProcess.TARGET_STATE_UP_TO_DATE:
+                return "UP_TO_DATE";
+            case HookedProcess.TARGET_STATE_STALE:
+                return "STALE";
+            case HookedProcess.TARGET_STATE_RELOADING:
+                return "RELOADING";
+            case HookedProcess.TARGET_STATE_FAILED:
+                return "FAILED";
+            default:
+                return "UNKNOWN(" + state + ")";
+        }
+    }
+
+    public static final class HookRuntimeStatus {
+        public final boolean serviceConnected;
+        public final boolean hooked;
+        public final String backend;
+        public final String framework;
+        public final int apiVersion;
+        public final String processName;
+        public final int pid;
+        public final String state;
+        public final String detail;
+
+        private HookRuntimeStatus(boolean serviceConnected, boolean hooked, String backend,
+                                  String framework, int apiVersion, String processName,
+                                  int pid, String state, String detail) {
+            this.serviceConnected = serviceConnected;
+            this.hooked = hooked;
+            this.backend = backend;
+            this.framework = framework;
+            this.apiVersion = apiVersion;
+            this.processName = processName;
+            this.pid = pid;
+            this.state = state;
+            this.detail = detail;
+        }
+
+        static HookRuntimeStatus hooked(String backend, String framework, int api,
+                                        String process, int pid, String state) {
+            return new HookRuntimeStatus(true, true, backend, framework, api,
+                    process, pid, state, null);
+        }
+
+        static HookRuntimeStatus connected(String backend, String framework, int api, String detail) {
+            return new HookRuntimeStatus(true, false, backend, framework, api,
+                    null, -1, null, detail);
+        }
+
+        static HookRuntimeStatus disconnected() {
+            return new HookRuntimeStatus(false, false, "未连接", null, -1,
+                    null, -1, null, "未连接 libxposed / NPatch Remote");
+        }
+
+        static HookRuntimeStatus error(String backend, Throwable error) {
+            String detail = error.getClass().getSimpleName() + ": " + String.valueOf(error.getMessage());
+            return new HookRuntimeStatus(true, false, backend, null, -1,
+                    null, -1, null, detail);
+        }
+    }
+
     public static boolean hasPreferencesBackend() {
         return sService != null || sNPatchClient != null;
     }
@@ -299,23 +408,15 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     }
 
     public static String getPreferencesBackendLabel() {
-        if (sService != null) {
-            return "libxposed";
-        }
-        if (sNPatchClient != null) {
-            return "NPatch Remote";
-        }
-        if (sNPatchConnecting) {
-            return "NPatch 连接中";
-        }
+        if (sService != null) return "libxposed";
+        if (sNPatchClient != null) return "NPatch Remote";
+        if (sNPatchConnecting) return "NPatch 连接中";
         return "未连接";
     }
 
     public static void addOnServiceBoundListener(OnServiceBoundListener listener) {
         synchronized (sBoundListeners) {
-            if (!sBoundListeners.contains(listener)) {
-                sBoundListeners.add(listener);
-            }
+            if (!sBoundListeners.contains(listener)) sBoundListeners.add(listener);
         }
     }
 
@@ -330,9 +431,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
         synchronized (sBoundListeners) {
             snapshot = new ArrayList<>(sBoundListeners);
         }
-        if (snapshot.isEmpty()) {
-            return;
-        }
+        if (snapshot.isEmpty()) return;
         new Handler(Looper.getMainLooper()).post(() -> {
             for (OnServiceBoundListener listener : snapshot) {
                 try {
