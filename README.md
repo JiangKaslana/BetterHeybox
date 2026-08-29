@@ -29,7 +29,7 @@
 
 ### 2. 无 Root + NPatch（推荐给普通设备）
 
-BetterHeybox 的核心功能是**进程内 Hook**，因此 Shizuku 不能替代 Xposed。无 Root 模式由 NPatch 把 libxposed 环境注入小黑盒：
+BetterHeybox 的核心功能是**进程内 Hook**，因此 Shizuku 不能替代 Xposed。无 Root 模式由 NPatch 把 libxposed 环境注入小黑盒。NPatch 无 Root 路线要求 Android 9（API 28）及以上。
 
 ```text
 BetterHeybox Manager
@@ -60,10 +60,10 @@ Shizuku+ 是**可选增强**，只负责无 Root 下的高权限进程操作，�
 管理器的进程控制优先级：
 
 ```text
-Shizuku / Shizuku+ > Root su > KILL_BACKGROUND_PROCESSES 普通兜底
+Shizuku / Shizuku+ > Root su > Android 13- 兼容后台结束
 ```
 
-授权后，“可靠重启小黑盒”会优先使用 Shizuku 执行 `am force-stop`，再重新拉起小黑盒。
+授权后，“可靠重启小黑盒”会优先使用 Shizuku 执行 `am force-stop`，再重新拉起小黑盒。Android 14+ 已限制第三方 App 使用 `killBackgroundProcesses()` 结束其他应用，因此没有 Shizuku 或 Root 时管理器会明确提示，而不会假装重启成功。
 
 如果使用 Shizuku+ 的独立包名版本，请按 Shizuku+ 的说明安装 Compat Hub，使标准 Shizuku 客户端能够获取服务 Binder。
 
@@ -79,6 +79,7 @@ BetterHeybox 现在包含 Launcher Activity，不再是“装完桌面完全看�
 - 读取 NPatch `sigBypassLevel` 并提示是否达到 Extreme
 - 检测 NPatch Remote API Provider
 - 检测 libxposed / NPatch Remote 设置服务
+- 通过 API 102 查询当前实际被 BetterHeybox Hook 的小黑盒进程
 - 检测 Shizuku+、Compat Hub、Binder 和授权状态
 - 检测 Root / `su`
 - 一键打开 NPatch / Shizuku+ / 小黑盒
@@ -99,7 +100,7 @@ BetterHeybox 现在包含 Launcher Activity，不再是“装完桌面完全看�
 
 桌面管理器通过 libxposed RemotePreferences 或 NPatch Remote API 写入模块远端配置。两边写入都会附带时间戳，Hook 侧比较时间：**最后一次修改的值生效**。
 
-这样既保留目标进程内本地设置的可靠性，也让无 Root 桌面管理器真正能够控制模块，而不是只显示一个无效开关页面。
+这样既保留目标进程内本地设置的可靠性，也让无 Root 桌面管理器真正能够控制模块，而不是只显示一个无效开关页面。远端提交失败时会进入待提交队列，后端恢复后自动补交。
 
 ## 功能
 
@@ -174,7 +175,7 @@ DexKit 能降低小版本更新带来的维护成本，但不能保证任意新�
 |---|---|
 | 语言 | Java 17 |
 | Hook API | `io.github.libxposed:api:102.0.0` |
-| Service | `io.github.libxposed:service:102.0.0` |
+| Service / Interface | `io.github.libxposed:service:102.0.0` / `interface:102.0.0` |
 | 字节码分析 | `org.luckypray:dexkit:2.2.0` |
 | Rootless Hook | NPatch |
 | Rootless 进程控制 | Shizuku API 13 / Shizuku+ Compat Hub |
@@ -189,13 +190,13 @@ app/src/main/
 ├── AndroidManifest.xml
 ├── java/com/better/heybox/
 │   ├── MainActivity.java          # 独立桌面管理器
-│   ├── App.java                   # libxposed + NPatch Remote 设置后端
+│   ├── App.java                   # libxposed + NPatch Remote 设置后端/运行状态
 │   ├── MainModule.java            # libxposed 模块入口与 Hook 编排
 │   ├── HeyboxPrefs.java           # 小黑盒进程本地设置 + 时间戳
 │   ├── PreferenceReceiver.java    # 内嵌设置到 RemotePreferences 的镜像
 │   ├── RootlessEnvironment.java   # NPatch/Rootless 环境检测
 │   ├── ShizukuBridge.java         # 标准 Shizuku API 兼容层
-│   ├── PrivilegedOps.java         # Shizuku / root / 普通权限降级链
+│   ├── PrivilegedOps.java         # Shizuku / root / 旧系统普通权限降级链
 │   ├── DexKitResolver.java
 │   ├── VideoDownloadManager.java
 │   └── hooks/
