@@ -37,6 +37,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Required for Shizuku/Shizuku+ to deliver its Binder to this app. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
         <receiver
             android:name=".PreferenceReceiver"
             android:exported="true">
