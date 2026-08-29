@@ -17,7 +17,7 @@
 
 所有功能开关均可在小黑盒「我的 → 设置 → 通用设置」中的 `BetterHeybox 设置` 入口直接打开模块面板，
 开关配置存放在**小黑盒应用目录**
-（`/data/data/com.max.xiaoheihe/shared_prefs/betterheybox.xml`），
+（`/data/data/com.max.xiaoheihe/shared_prefs/betterheybox.xml`）
 
 ### 广告过滤
 

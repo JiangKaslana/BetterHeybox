@@ -43,8 +43,6 @@ public final class ImageShareHook {
         hookImageLongPressMenu(cl);
     }
 
-    /** 系统分享动作图标（资源 ID 跨版本不稳定，运行时按名称解析，见 resolveForwardIcon） */
-    private static final int TARGET_FORWARD_ICON = 0;
     private volatile Object pendingImageShareMediaData;
     private void hookImageLongPressMenu(ClassLoader cl) {
         try {
@@ -151,7 +149,7 @@ public final class ImageShareHook {
             Object actionObject = actionObjClass.getConstructor(
                             String.class, Integer.class, String.class, String.class,
                             String.class, String.class, actionClass)
-                    .newInstance("系统分享", resolveForwardIcon(context), null, null, null, null, customAction);
+                    .newInstance("系统分享", resolveShareArrowIcon(context), null, null, null, null, customAction);
             @SuppressWarnings("unchecked")
             List<Object> mutableActions = (List<Object>) actions;
             mutableActions.add(actionObject);
@@ -256,15 +254,16 @@ public final class ImageShareHook {
     }
 
     /**
-     * 系统分享动作图标：按资源名解析（资源 ID 跨版本不稳定），失败返回 0（使用默认图标）。
+     * 系统分享动作图标：小黑盒分享面板同款转发箭头（bbs_sharebutton_forward_46x46）。
+     * 资源 ID 跨版本不稳定，运行时按名称解析，失败返回 0（使用默认图标）。
      */
-    private static int resolveForwardIcon(Context context) {
+    private static int resolveShareArrowIcon(Context context) {
         if (context == null) {
             return 0;
         }
         try {
             int id = context.getResources().getIdentifier(
-                    "bbs_sharebutton_edit_tie_46x46", "drawable", MainModule.TARGET_PKG);
+                    "bbs_sharebutton_forward_46x46", "drawable", MainModule.TARGET_PKG);
             return id != 0 ? id : 0;
         } catch (Throwable t) {
             return 0;
