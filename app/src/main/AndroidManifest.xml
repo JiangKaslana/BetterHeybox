@@ -12,6 +12,7 @@
         <package android:name="af.shizuku.plus.api" />
         <package android:name="moe.shizuku.privileged.api" />
         <provider android:authorities="top.nkbe.npatch.remote" />
+        <provider android:authorities="top.nkbe.npatch.manager.provider.config" />
     </queries>
 
     <!--
