@@ -13,9 +13,12 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -165,8 +168,9 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
         addToggle(root, "视频下载", "显示视频下载入口", App.KEY_VIDEO_DOWNLOAD, true);
         addToggle(root, "视频自动转 MP4", null, App.KEY_VIDEO_TO_MP4, true);
         addToggle(root, "净化分享链接", null, App.KEY_PURIFY_SHARE_LINK, true);
-        addToggle(root, "自动每日分享任务", "链接与分享渠道仍可在小黑盒内嵌设置配置",
+        addToggle(root, "自动每日分享任务", "可直接在下方配置三个链接和分享渠道",
                 App.KEY_DAILY_TASK_ENABLED, false);
+        addButton(root, "配置每日任务链接与渠道", v -> showDailyTaskConfig());
 
         addSectionLabel(root, "界面与通用");
         addToggle(root, "隐藏发现 Tab", "修改后建议重启小黑盒", App.KEY_HIDE_TAB_HOME, false);
@@ -209,6 +213,8 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
             readinessView.setText("✓ BetterHeybox 正在 Hook 小黑盒 · " + hook.backend);
         } else if (s.rootAvailable) {
             readinessView.setText("✓ Root 环境可用；打开小黑盒后可检查实际 Hook 状态");
+        } else if (!s.npatchSupported) {
+            readinessView.setText("• 当前 Android 版本不支持 NPatch 无 Root；请使用 Root + LSPosed");
         } else if (s.isRootlessReady()) {
             readinessView.setText("✓ 无 Root 基础环境就绪；打开小黑盒后检查 Hook 状态");
         } else if (!s.heyboxInstalled) {
@@ -218,7 +224,7 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
         } else if (!s.npatchPatched) {
             readinessView.setText("• 小黑盒尚未经过 NPatch 修补");
         } else if (!s.isSignatureBypassCompatible()) {
-            readinessView.setText("• NPatch 签名绕过需设为 Extreme（当前 "
+            readinessView.setText("• NPatch 签名绕过必须设为 Extreme（当前 "
                     + RootlessEnvironment.sigBypassLabel(s.sigBypassLevel) + "）");
         } else {
             readinessView.setText("• Rootless 环境已修补，请确认 NPatch 中已启用 BetterHeybox 模块");
@@ -240,6 +246,8 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
             addStatus("Hook 框架", hook.framework + " · API " + hook.apiVersion, true);
         }
 
+        addStatus("NPatch 支持", s.npatchSupported
+                ? "Android " + s.sdkInt + " 可用" : "需要 Android 9+", s.npatchSupported);
         addStatus("NPatch 管理器", s.npatchInstalled ? "已安装" : "未安装", s.npatchInstalled);
         addStatus("小黑盒 NPatch 注入", s.npatchPatched ? "已检测到" : "未检测到", s.npatchPatched);
         if (s.npatchPatched) {
@@ -248,6 +256,10 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
             addStatus("内嵌模块", s.hasEmbeddedModules ? "已检测到" : "未检测到 / Manager 模式",
                     s.hasEmbeddedModules || s.npatchUseManager);
         }
+        String moduleConfig = s.npatchModuleConfigured
+                ? "BetterHeybox 已为小黑盒启用"
+                : (s.npatchConfigProvider ? "未确认启用" : "Config Provider 不可见");
+        addStatus("NPatch 模块配置", moduleConfig, s.npatchModuleConfigured);
 
         boolean backend = App.hasPreferencesBackend();
         String backendText = App.getPreferencesBackendLabel();
@@ -334,10 +346,76 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
                     openPackage(RootlessEnvironment.HEYBOX_PACKAGE);
                 } else {
                     toast("重启失败：" + (result.error == null ? "未知原因" : result.error));
+                    if (!ShizukuBridge.hasPermission()) {
+                        shizukuButton.setText("授权 Shizuku+ 后可可靠重启");
+                    }
                 }
                 refreshStatus();
             }, 450L);
         });
+    }
+
+    private void showDailyTaskConfig() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(8), dp(20), 0);
+
+        EditText picture = addTextField(box, "帖子链接", App.readString(App.KEY_DAILY_TASK_PICTURE, ""));
+        EditText normal = addTextField(box, "游戏详情链接", App.readString(App.KEY_DAILY_TASK_NORMAL, ""));
+        EditText channelLink = addTextField(box, "游戏评价链接", App.readString(App.KEY_DAILY_TASK_CHANNEL, ""));
+
+        TextView channelLabel = new TextView(this);
+        channelLabel.setText("分享渠道");
+        channelLabel.setTextSize(13);
+        channelLabel.setPadding(0, dp(10), 0, dp(4));
+        box.addView(channelLabel);
+
+        String[] labels = {"QQ / QQ空间", "微信 / 朋友圈", "微博"};
+        String[] values = {"QQ", "WECHAT", "WEIBO"};
+        Spinner spinner = new Spinner(this);
+        spinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, labels));
+        String current = App.readString(App.KEY_SHARE_CHANNEL, "QQ");
+        int selected = 0;
+        for (int i = 0; i < values.length; i++) {
+            if (values[i].equalsIgnoreCase(current)) {
+                selected = i;
+                break;
+            }
+        }
+        spinner.setSelection(selected);
+        box.addView(spinner, matchWrap());
+
+        new AlertDialog.Builder(this)
+                .setTitle("每日任务配置")
+                .setView(box)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("保存", (dialog, which) -> {
+                    App.writeString(App.KEY_DAILY_TASK_PICTURE, picture.getText().toString().trim());
+                    App.writeString(App.KEY_DAILY_TASK_NORMAL, normal.getText().toString().trim());
+                    App.writeString(App.KEY_DAILY_TASK_CHANNEL, channelLink.getText().toString().trim());
+                    int index = Math.max(0, Math.min(values.length - 1, spinner.getSelectedItemPosition()));
+                    App.writeString(App.KEY_SHARE_CHANNEL, values[index]);
+                    toast(App.hasPreferencesBackend()
+                            ? "每日任务配置已保存"
+                            : "配置已保存，等待 NPatch/LSPosed 设置服务连接");
+                })
+                .show();
+    }
+
+    private EditText addTextField(LinearLayout parent, String label, String value) {
+        TextView title = new TextView(this);
+        title.setText(label);
+        title.setTextSize(13);
+        title.setPadding(0, dp(8), 0, dp(2));
+        parent.addView(title);
+
+        EditText edit = new EditText(this);
+        edit.setText(value == null ? "" : value);
+        edit.setSingleLine(true);
+        edit.setHint("https://... 或 heybox://...");
+        parent.addView(edit, matchWrap());
+        return edit;
     }
 
     private void showRootlessGuide() {
@@ -347,16 +425,25 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
                 .append("1. 安装 NPatch。\n")
                 .append("2. 在 NPatch 选择小黑盒进行本地修补。\n")
                 .append("3. 把 BetterHeybox 加入修补模块。\n")
-                .append("4. 破解签名校验选择 Extreme。\n")
+                .append("4. 破解签名校验必须选择 Extreme。\n")
                 .append("5. 安装修补后的小黑盒并启动一次。\n")
                 .append("6. 回到本页，刷新后确认“实际 Hook”。\n\n");
 
+        if (!s.npatchSupported) {
+            message.append("当前 Android API ").append(s.sdkInt)
+                    .append("：NPatch 无 Root 需要 Android 9 / API 28+。\n");
+        }
         if (s.npatchPatched) {
             message.append("当前检测：小黑盒已 NPatch 修补；签名绕过 = ")
                     .append(RootlessEnvironment.sigBypassLabel(s.sigBypassLevel))
                     .append("。\n");
         } else {
             message.append("当前检测：尚未检测到 NPatch 修补标记。\n");
+        }
+        if (s.npatchConfigProvider) {
+            message.append("NPatch 模块配置：")
+                    .append(s.npatchModuleConfigured ? "已启用 BetterHeybox" : "未确认 BetterHeybox 已启用")
+                    .append("。\n");
         }
         if (!s.hasEmbeddedModules && s.npatchPatched) {
             message.append("未在 APK 中看到内嵌模块，可能使用 NPatch Manager 模式；请在 NPatch 中确认 BetterHeybox 已启用。\n");
