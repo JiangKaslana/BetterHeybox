@@ -2,194 +2,264 @@
 
 ![BetterHeybox](https://socialify.git.ci/Mrmiaomrzh/BetterHeybox/image?font=Source+Code+Pro&forks=1&issues=1&language=1&name=1&pattern=Floating+Cogs&pulls=1&stargazers=1&theme=Auto)
 
-增强小黑盒（Heybox）的 LSPosed 模块。
+增强小黑盒（Heybox）的 libxposed 模块，支持 **Root + LSPosed** 与 **无 Root + NPatch** 两种运行方式。
 
-# 免责声明
-本应用与清枫（北京）科技有限公司无关，仅学习研究小黑盒APP部分原理，请在下载后24h内删除
+当前版本同时提供独立桌面管理器：安装 BetterHeybox 后可以直接从桌面打开，查看 Hook/NPatch/Shizuku 环境、切换常用功能并重启小黑盒。
 
-> [!Note]
->本应用兼容 [小黑盒 1.3.393](https://github.com/Mrmiaomrzh/BetterHeybox/releases/download/v0.2.0/heybox_1.3.393.apk) 及以上版本，其他版本出现的问题不会进行处理
+## 免责声明
 
-> [!WARNING]
-> 使用免Root框架`「NPatch」`时，需要把`破解签名校验`改成`Extreme`，不然会有缺少参数闪退的问题
+本应用与清枫（北京）科技有限公司无关，仅用于学习研究小黑盒 App 的部分实现原理，请自行评估使用风险。
+
+> [!NOTE]
+> 当前主要适配小黑盒 `1.3.393` / `1.3.394`。项目带有 DexKit 自动定位能力，但目标 App 大版本变化后仍可能需要重新适配。
+
+> [!IMPORTANT]
+> 无 Root 使用 NPatch 时，请把 **破解签名校验**设置为 **`Extreme`**。低级别签名绕过已知可能导致小黑盒参数缺失或闪退。
+
+## 运行方式
+
+### 1. Root + LSPosed
+
+传统方式保持兼容：
+
+1. 安装 BetterHeybox。
+2. 使用支持 libxposed API 102 的 LSPosed。
+3. 启用 BetterHeybox；`staticScope=true` 时作用域固定为 `com.max.xiaoheihe`。
+4. 重启小黑盒。
+
+### 2. 无 Root + NPatch（推荐给普通设备）
+
+BetterHeybox 的核心功能是**进程内 Hook**，因此 Shizuku 不能替代 Xposed。无 Root 模式由 NPatch 把 libxposed 环境注入小黑盒：
+
+```text
+BetterHeybox Manager
+        │
+        ├─ 设置：libxposed Service / NPatch Remote API
+        ├─ 进程控制：Shizuku+（可选）
+        │
+        └─ Hook：NPatch
+                  │
+                  └─ com.max.xiaoheihe
+```
+
+快速步骤：
+
+1. 安装 NPatch。
+2. 在 NPatch 中选择小黑盒进行本地修补。
+3. 把 BetterHeybox 加入本次修补/模块配置。
+4. 签名绕过选择 **Extreme**。
+5. 安装修补后的小黑盒并启动一次。
+6. 打开桌面的 BetterHeybox 管理器检查状态。
+
+详细说明见 [ROOTLESS.md](ROOTLESS.md)。
+
+### Shizuku / Shizuku+
+
+Shizuku+ 是**可选增强**，只负责无 Root 下的高权限进程操作，不参与 Hook。
+
+管理器的进程控制优先级：
+
+```text
+Shizuku / Shizuku+ > Root su > KILL_BACKGROUND_PROCESSES 普通兜底
+```
+
+授权后，“可靠重启小黑盒”会优先使用 Shizuku 执行 `am force-stop`，再重新拉起小黑盒。
+
+如果使用 Shizuku+ 的独立包名版本，请按 Shizuku+ 的说明安装 Compat Hub，使标准 Shizuku 客户端能够获取服务 Binder。
+
+## 独立桌面管理器
+
+BetterHeybox 现在包含 Launcher Activity，不再是“装完桌面完全看不到”的纯模块 APK。
+
+管理器当前可以：
+
+- 查看小黑盒版本和安装状态
+- 检测 NPatch Manager
+- 检测已安装小黑盒是否带 NPatch 修补标记
+- 读取 NPatch `sigBypassLevel` 并提示是否达到 Extreme
+- 检测 NPatch Remote API Provider
+- 检测 libxposed / NPatch Remote 设置服务
+- 检测 Shizuku+、Compat Hub、Binder 和授权状态
+- 检测 Root / `su`
+- 一键打开 NPatch / Shizuku+ / 小黑盒
+- 可靠重启小黑盒
+- 在桌面直接控制常用 BetterHeybox 开关
+
+### 两套设置入口如何同步
+
+仍然保留小黑盒内部：
+
+`我的 → 设置 → 通用设置 → BetterHeybox 设置`
+
+同时增加桌面 BetterHeybox Manager。
+
+小黑盒内嵌设置继续写入：
+
+`/data/user/0/com.max.xiaoheihe/shared_prefs/betterheybox.xml`
+
+桌面管理器通过 libxposed RemotePreferences 或 NPatch Remote API 写入模块远端配置。两边写入都会附带时间戳，Hook 侧比较时间：**最后一次修改的值生效**。
+
+这样既保留目标进程内本地设置的可靠性，也让无 Root 桌面管理器真正能够控制模块，而不是只显示一个无效开关页面。
 
 ## 功能
 
-所有功能开关均可在小黑盒「我的 → 设置 → 通用设置」中的 `BetterHeybox 设置` 入口直接打开模块面板，
-开关配置存放在**小黑盒应用目录**
-（`/data/data/com.max.xiaoheihe/shared_prefs/betterheybox.xml`）
-
 ### 广告过滤
 
-| 类型 |
-|------|
-| 屏蔽开屏广告 |
-| 屏蔽信息流广告 |
-| 屏蔽气泡广告 |
-| 屏蔽角标广告 |
-| 屏蔽推广贴 |
+- 屏蔽开屏广告
+- 屏蔽信息流广告
+- 屏蔽气泡广告
+- 屏蔽角标广告
+- 屏蔽推广贴
+
+信息流过滤在小黑盒进程内 Hook Gson 反序列化路径，不是简单的 DNS/域名屏蔽。
 
 ### 界面增强
 
-- **底部导航栏优化**（需重启小黑盒生效）：隐藏底栏tab项
+- 隐藏底部导航栏指定 Tab
+- 隐藏底部“加号”
+- 需要重启小黑盒的配置可通过管理器快速重启
 
 ### 帖子增强
 
-- **解除复制**：Hook 小黑盒自定义 `TextSelectHandler` 的长按拦截，
-  恢复安卓系统标准文本选择
-- **拖动跨行选择修复**：文本选择激活时放行滚动容器的触摸拦截，选择手柄可跨行拖动
-- **图片系统分享**：图片查看器中长按图片，在原有分享面板追加「系统分享」动作，
-  下载当前图片后**优先保存到系统相册**（可被相册真正查看、可被任意 App 分享），
-  自动识别 jpg/png/gif/webp/bmp 真实格式并修正 MIME；可通过「系统分享图片」开关关闭
-- **净化分享链接**：复制链接 / 分享到 QQ、微信等渠道时，自动去掉小黑盒链接上的
-  h_camp、h_session_id、h_src、new_post_share_style 等追踪参数
-  （如 `...web/share?h_camp=link&h_session_id=xxx&link_id=abc&new_post_share_style=true`
-  净化为 `...web/share?link_id=abc`；仅处理小黑盒域名，保留 link_id / id / hkey
-  等功能参数，链接照常打开）；默认开启，可通过「净化分享链接」开关关闭，
-  去除内容会记录到模块日志
+- **解除复制**：解除小黑盒 `TextSelectHandler` 的长按拦截，恢复标准文本选择
+- **自绘制文本选择**：用于部分机型/页面原生选区异常时的兼容模式
+- **跨行选择修复**
+- **图片系统分享**：长按图片追加系统分享并优先保存到相册
+- **净化分享链接**：移除 `h_camp`、`h_session_id`、`h_src`、`new_post_share_style` 等追踪参数，保留 `link_id` / `id` / `hkey` 等功能参数
 
 ### 视频下载
 
-- **下载入口**：视频帖右上角圆形 Monet 渐变悬浮按钮
-- **底部下载面板**：
-  - 准备：标题 / 来源 / 预计大小 → 「开始下载」
-  - 下载中：实时百分比、已下载/总大小、当前速度 → 「暂停下载」「取消下载」
-  - 暂停：「继续下载」
-  - 完成：保存路径 → 「播放」「分享」「完成」
-  - 失败：错误原因 → 「重新下载」
-- **后台下载**：面板可随时关闭，下载继续进行；悬浮按钮进度环持续反馈
-- **全类型视频**：正文 / 信息流 / 故事 / 游戏卡片均可；mp4 直链与 HLS（m3u8）分片流均支持
-- **断点续传**  
-- **自动转封装 MP4**：HLS 合并后自动无损转封装为 MP4
-- **智能命名**：文件名优先使用**帖子标题**，HLS 通用名（segs/index）自动回退时间戳；
-  重名自动加 `(n)` 后缀，绝不覆盖
-- **保存位置**：默认相册 `Movies/BetterHeybox`；设置「保存位置」可调起**系统文件选择器**
-  选择任意文件夹，完成通知显示实际保存路径
-- **通知栏反馈**：进度（含暂停/取消）、完成（播放/分享/删除 + 保存路径）、失败（重试/取消）
-- **系统分享**：完成后一键分享视频文件  
+- 捕获小黑盒播放器真实视频 URL
+- mp4 与 HLS/m3u8
+- 后台下载
+- 暂停 / 继续 / 取消
+- 断点续传
+- HLS 合并后自动无损转封装 MP4
+- 默认保存到 `Movies/BetterHeybox`
+- 支持系统文件选择器指定目录
+- 通知栏进度、完成、失败与操作按钮
+- 完成后一键播放 / 分享
 
 ### 每日任务
 
-- **自动完成每日分享任务**：自动完成小黑盒每日任务的 **3 种分享任务**
-  - 任务一：**分享任意帖子**（配置帖子链接）
-  - 任务二：**分享游戏详情**（配置游戏详情链接）
-  - 任务三：**分享游戏评价**（配置游戏评价链接）
-- **3 个独立链接设置**：帖子链接 / 游戏详情链接 / 游戏评价链接，各自独立配置；
-  未配置的任务自动跳过；每日状态按日期记录，跨天重置
-- **分享渠道可配置**：内嵌面板/独立设置页「分享渠道」可选 **QQ / QQ空间**、**微信 / 朋友圈** 或 **微博**，
-  自动分享按所选渠道在分享面板点击对应按钮并伪造成功回调（默认 QQ；抖音因无分享成功回调暂不支持）
-- **清除今日打卡**：打卡失败或想重新执行时，点击「清除今日打卡」清除今日已完成状态并立即重新尝试
+支持自动完成 3 类分享任务：
 
-#### 链接格式（3 个分享链接均支持以下任意一种）
+- 分享任意帖子
+- 分享游戏详情
+- 分享游戏评价
 
-| 类型 | 示例 |
-|------|------|
-| 分享链接（带 link_id） | `https://api.xiaoheihe.cn/v3/bbs/app/api/web/share?link_id=123456` |
-| 网页链接（xiaoheihe.cn） | `https://xiaoheihe.cn/a/123456` |
-| 深链协议（heybox://） | `heybox://v3/bbs/app/api/web/share?link_id=123456` |
-
-> 链接经小黑盒 RouterActivity 自动路由到对应帖子/游戏页；未配置的类型自动跳过。  
-> **获取方式**：在小黑盒 App 打开目标帖子 → 分享 → 复制链接，取分享链接或网页链接均可；
-> 游戏/频道页同理复制分享链接  
+支持分别配置链接与分享渠道，并可清除当天状态后重新执行。
 
 ### 通用
 
-- **版本前置检测**：检测小黑盒版本是否为受支持版本 `1.3.393` / `1.3.394`，不匹配时显示提示
-- **伪装通知权限**：让小黑盒认为通知权限已开启，获得**签到加成**  
-- **屏蔽更新**：提供可选开关，屏蔽小黑盒更新   
-- **记录日志**：提供「记录日志」开关，开启后自动把模块运行日志写入文件
+- 小黑盒版本检测
+- 伪装通知权限判断
+- 屏蔽小黑盒更新入口
+- 模块日志记录与导出
+- 配置导入 / 导出
 
-### 更新兼容（DexKit 自动分析）
+## 更新兼容
 
-小黑盒更新常会打乱混淆名，模块通过 [DexKit](https://github.com/LuckyPray/DexKit) 字节码特征分析
-自动重新定位，不必等模块发版适配：
+项目使用 DexKit 根据字节码特征重新定位部分混淆类/方法：
 
-- **原生弹窗自动定位**：以 HeyBoxDialog 内的品牌常量字符串为锚点定位对话框类；
-  Builder 的标题/正文、View 槽位、正向/负向按钮等同签名混淆方法，用 alpha=0 的
-  「隐形探针」按实际渲染位置自动分类；
-  分享渠道 / 链接编辑 / 导入确认 / 保存位置等弹窗全部走该通道，解析失败自动回退系统弹窗
-- **设置页启发式定位**：binding 字段按 ViewBinding 接口形态判定
+- HeyBoxDialog 原生弹窗定位
+- 设置页入口兜底定位
+- 部分 ViewBinding/生命周期路径兜底
+
+DexKit 能降低小版本更新带来的维护成本，但不能保证任意新版本都无需适配。
 
 ## 技术栈
 
 | 项 | 值 |
-|----|----|
+|---|---|
 | 语言 | Java 17 |
 | Hook API | `io.github.libxposed:api:102.0.0` |
 | Service | `io.github.libxposed:service:102.0.0` |
 | 字节码分析 | `org.luckypray:dexkit:2.2.0` |
+| Rootless Hook | NPatch |
+| Rootless 进程控制 | Shizuku API 13 / Shizuku+ Compat Hub |
 | compileSdk / targetSdk | 37 |
 | minSdk | 26 |
 | AGP / Gradle | 9.2.1 / 9.7.1 |
-| JDK | 17+ |
 
 ## 工程结构
 
-```
+```text
 app/src/main/
-├── AndroidManifest.xml          # 模块名/描述 = android:label / android:description
+├── AndroidManifest.xml
 ├── java/com/better/heybox/
-│   ├── MainModule.java          # 模块入口：生命周期 + Hook 安装编排 + 共享工具
-│   ├── App.java                 # Application：连接框架服务、RemotePreferences 存取
-│   ├── SettingsActivity.java    # 模块独立设置界面
-│   ├── HeyboxPrefs.java         # 小黑盒进程本地配置存储（配置文件放小黑盒目录）
-│   ├── ThemeUtils.java          # 共享主题工具：Monet 动态取色 / surface 色板 / 设计 token
-│   ├── LogRecorder.java         # 文件日志记录器（日志开关）
-│   ├── VideoDownloadManager.java # 视频下载：任务状态机/注册表/断点续传/HLS 分片/mp4 转封装/保存/通知
-│   ├── PreferenceReceiver.java  # 设置写回广播接收（镜像同步 RemotePreferences）
-│   ├── DexKitResolver.java      # DexKit 自动分析：小黑盒更新后自动定位原生弹窗
-│   └── hooks/                   # 各功能 Hook 按模块拆分
-│       ├── GeneralHook.java     #   通用：版本检测 / 屏蔽更新 / 伪装通知权限
-│       ├── AdFilterHook.java    #   广告过滤：开屏 / 信息流 / 气泡 / 角标
-│       ├── SettingsEntryHook.java # 设置页入口注入 + 内嵌设置面板（入口混淆名失效自动回退生命周期 Hook）
-│       ├── BottomTabHook.java   #   底部导航栏隐藏（tab 名版本自适应）
-│       ├── PromotePostHook.java #   推广贴屏蔽
-│       ├── TextSelectHook.java  #   解除复制 / 标准文本选择 / 跨行选择
-│       ├── ImageShareHook.java  #   图片系统分享（优先保存系统相册）
-│       ├── ShareLinkPurifyHook.java #   净化分享链接：去除分享/复制链接上的追踪参数
-│       ├── VideoDownloadHook.java #   视频下载：URL 捕获 + 圆形下载按钮 + 底部下载面板
-│       └── DailyTaskHook.java   #   每日任务：3 种分享类型自动完成
-├── res/                         # 设置页布局 / 字符串 / drawable
-└── resources/META-INF/xposed/   # 模块声明
+│   ├── MainActivity.java          # 独立桌面管理器
+│   ├── App.java                   # libxposed + NPatch Remote 设置后端
+│   ├── MainModule.java            # libxposed 模块入口与 Hook 编排
+│   ├── HeyboxPrefs.java           # 小黑盒进程本地设置 + 时间戳
+│   ├── PreferenceReceiver.java    # 内嵌设置到 RemotePreferences 的镜像
+│   ├── RootlessEnvironment.java   # NPatch/Rootless 环境检测
+│   ├── ShizukuBridge.java         # 标准 Shizuku API 兼容层
+│   ├── PrivilegedOps.java         # Shizuku / root / 普通权限降级链
+│   ├── DexKitResolver.java
+│   ├── VideoDownloadManager.java
+│   └── hooks/
+│       ├── GeneralHook.java
+│       ├── AdFilterHook.java
+│       ├── SettingsEntryHook.java
+│       ├── BottomTabHook.java
+│       ├── PromotePostHook.java
+│       ├── TextSelectHook.java
+│       ├── ImageShareHook.java
+│       ├── ShareLinkPurifyHook.java
+│       ├── VideoDownloadHook.java
+│       └── DailyTaskHook.java
+├── java/top/nkbe/npatch/remote/
+│   └── NPatchRemoteClient.java    # NPatch Remote API 最小兼容客户端
+├── res/
+└── resources/META-INF/xposed/
+    ├── java_init.list
+    ├── module.prop
+    └── scope.list
 ```
+
+## 构建
+
+环境：JDK 17+、Android SDK Platform 37。
+
+```bash
+./gradlew assembleDebug
+```
+
+Windows：
+
+```powershell
+gradlew.bat assembleDebug
+```
+
+Debug APK：
+
+`app/build/outputs/apk/debug/app-debug.apk`
+
+Release 构建启用 R8；`proguard-rules.pro` 保留模块入口和 Shizuku 反射调用所需符号。
 
 ## 模块声明
 
-全部声明在 `META-INF/xposed/`：
+`META-INF/xposed/module.prop`：
 
+```text
+minApiVersion=101
+targetApiVersion=102
+staticScope=true
+autoHotReload=true
 ```
-app/src/main/resources/META-INF/xposed/
-├── java_init.list      # 入口类
-├── module.prop         # minApiVersion=101
-└── scope.list          # 作用域
-```
 
-- 模块名称 / 描述：`android:label` / `android:description`（见 `res/values/strings.xml`）
-
-## 构建与使用
-
-1. **环境**：Android Studio 打开本目录（首次自动下载 Gradle 9.7.1 + 依赖，需网络；
-   若提示缺 wrapper 让 AS 自动补全；SDK Manager 需装有 **Platform 37**）
-2. **编译**：
-   - Windows：`gradlew.bat assembleDebug`
-   - 命令行/CI：`./gradlew assembleDebug`
-   - 或 Android Studio `Build > Make Project`
-   - 产物：`app/build/outputs/apk/debug/app-debug.apk`
-   - 正式版 `assembleRelease`：启用 R8 裁剪第三方依赖体积，
-     自有代码在 `proguard-rules.pro` 整包 keep，不影响 Hook 目标定位
-3. **刷入**：
-   - 模拟器/真机需 root + **支持 API 102 的 LSPosed**
-   - 安装 APK → LSPosed Manager 启用模块。
-     `staticScope=true` 时作用域固定为 scope.list 中的小黑盒，无需（也无法）手动勾选其它应用
-   - 重启小黑盒进程
-4. **看日志**：`adb logcat -s BetterHeybox`（每个 Hook 安装成功/失败均有 ✔/✘ 日志）；
-   也可在小黑盒设置面板 / 独立设置页开启「记录日志」，日志自动写入文件便于离线排查
+作用域为小黑盒 `com.max.xiaoheihe`。
 
 ## 致谢
-- [LSPosed](https://github.com/LSPosed/LSPosed)
-- [Libxposed api](https://github.com/libxposed/api) — Apache-2.0，现代 Xposed 模块 API
-- [Dexkit](https://github.com/LuckyPray/DexKit) — Apache-2.0，字节码特征分析
 
-### 部分功能灵感来源
-- [假装开启小黑盒通知权限](https://github.com/Xposed-Modules-Repo/com.chrxw.justenablednotification)
-- [SoulFrog](https://github.com/xmnh/SoulFrog)
+- [LSPosed](https://github.com/LSPosed/LSPosed)
+- [libxposed API](https://github.com/libxposed/api)
+- [libxposed service](https://github.com/libxposed/service)
+- [DexKit](https://github.com/LuckyPray/DexKit)
+- [NPatch](https://github.com/7723mod/NPatch)
+- [NPatch Remote API](https://github.com/7723mod/NPatch-Remote-API)
+- [Shizuku](https://github.com/RikkaApps/Shizuku)
+- [Shizuku+](https://github.com/thejaustin/ShizukuPlus)
+
+第三方代码/依赖说明见 `THIRD_PARTY_NOTICES.md`。
