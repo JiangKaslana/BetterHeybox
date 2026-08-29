@@ -27,10 +27,7 @@ import java.util.concurrent.Executors;
 
 import rikka.shizuku.Shizuku;
 
-/**
- * Standalone BetterHeybox manager for both LSPosed and rootless NPatch users.
- * Hook code itself remains unchanged and still executes inside Heybox.
- */
+/** Standalone manager for both LSPosed and rootless NPatch users. */
 public final class MainActivity extends Activity implements App.OnServiceBoundListener {
 
     private static final String NPATCH_URL = "https://github.com/7723mod/NPatch";
@@ -68,7 +65,7 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
         App.addOnServiceBoundListener(this);
         App.tryConnectNPatchRemote();
         try {
-            Shizuku.addBinderReceivedListener(shizukuReceived);
+            Shizuku.addBinderReceivedListenerSticky(shizukuReceived);
             Shizuku.addBinderDeadListener(shizukuDead);
             Shizuku.addRequestPermissionResultListener(shizukuPermission);
         } catch (Throwable ignored) {
@@ -163,10 +160,13 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
         addToggle(root, "屏蔽角标广告", null, App.KEY_CORNER_AD, true);
         addToggle(root, "屏蔽推广贴", null, App.KEY_PROMOTE_AD, true);
         addToggle(root, "解除复制", "恢复系统文本选择", App.KEY_COPY_POST, true);
+        addToggle(root, "自绘制文本选择", "原生选择异常时再开启", App.KEY_CUSTOM_TEXT_SELECT, false);
         addToggle(root, "系统分享图片", null, App.KEY_SYSTEM_SHARE, true);
         addToggle(root, "视频下载", "显示视频下载入口", App.KEY_VIDEO_DOWNLOAD, true);
         addToggle(root, "视频自动转 MP4", null, App.KEY_VIDEO_TO_MP4, true);
         addToggle(root, "净化分享链接", null, App.KEY_PURIFY_SHARE_LINK, true);
+        addToggle(root, "自动每日分享任务", "链接与分享渠道仍可在小黑盒内嵌设置配置",
+                App.KEY_DAILY_TASK_ENABLED, false);
 
         addSectionLabel(root, "界面与通用");
         addToggle(root, "隐藏发现 Tab", "修改后建议重启小黑盒", App.KEY_HIDE_TAB_HOME, false);
@@ -194,20 +194,23 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
         refreshToggleValues();
         executor.execute(() -> {
             RootlessEnvironment.Snapshot snapshot = RootlessEnvironment.inspect(getApplicationContext());
+            App.HookRuntimeStatus hook = App.inspectHookRuntime(RootlessEnvironment.HEYBOX_PACKAGE);
             handler.post(() -> {
-                if (!destroyed) renderStatus(snapshot);
+                if (!destroyed) renderStatus(snapshot, hook);
             });
         });
     }
 
-    private void renderStatus(RootlessEnvironment.Snapshot s) {
+    private void renderStatus(RootlessEnvironment.Snapshot s, App.HookRuntimeStatus hook) {
         if (statusContainer == null) return;
         statusContainer.removeAllViews();
 
-        if (s.rootAvailable) {
-            readinessView.setText("✓ Root 环境可用：可继续使用 LSPosed 模式");
+        if (hook.hooked) {
+            readinessView.setText("✓ BetterHeybox 正在 Hook 小黑盒 · " + hook.backend);
+        } else if (s.rootAvailable) {
+            readinessView.setText("✓ Root 环境可用；打开小黑盒后可检查实际 Hook 状态");
         } else if (s.isRootlessReady()) {
-            readinessView.setText("✓ 无 Root 基础环境就绪：NPatch + Extreme/更高签名绕过");
+            readinessView.setText("✓ 无 Root 基础环境就绪；打开小黑盒后检查 Hook 状态");
         } else if (!s.heyboxInstalled) {
             readinessView.setText("• 请先安装小黑盒");
         } else if (!s.npatchInstalled) {
@@ -223,11 +226,24 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
 
         addStatus("小黑盒", s.heyboxInstalled
                 ? "已安装 · " + s.heyboxVersion : "未安装", s.heyboxInstalled);
+
+        String hookText;
+        if (hook.hooked) {
+            hookText = hook.processName + " · pid " + hook.pid + " · " + hook.state;
+        } else if (hook.serviceConnected) {
+            hookText = hook.detail == null ? "服务已连接，未发现目标" : hook.detail;
+        } else {
+            hookText = "尚无可查询的 API 102 服务";
+        }
+        addStatus("实际 Hook", hookText, hook.hooked);
+        if (hook.serviceConnected && hook.framework != null) {
+            addStatus("Hook 框架", hook.framework + " · API " + hook.apiVersion, true);
+        }
+
         addStatus("NPatch 管理器", s.npatchInstalled ? "已安装" : "未安装", s.npatchInstalled);
         addStatus("小黑盒 NPatch 注入", s.npatchPatched ? "已检测到" : "未检测到", s.npatchPatched);
         if (s.npatchPatched) {
-            String bypass = RootlessEnvironment.sigBypassLabel(s.sigBypassLevel);
-            addStatus("签名绕过", bypass,
+            addStatus("签名绕过", RootlessEnvironment.sigBypassLabel(s.sigBypassLevel),
                     s.isSignatureBypassCompatible());
             addStatus("内嵌模块", s.hasEmbeddedModules ? "已检测到" : "未检测到 / Manager 模式",
                     s.hasEmbeddedModules || s.npatchUseManager);
@@ -248,7 +264,9 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
                 ? "Shizuku+ 已安装"
                 : (s.shizukuCompatInstalled ? "Compat Hub 可见" : "未安装 Shizuku+");
         String shizukuState = shizukuInstall
-                + (shizukuAlive ? (shizukuGranted ? " · 服务已授权" : " · 服务运行，待授权") : " · 服务未连接");
+                + (shizukuAlive
+                ? (shizukuGranted ? " · 服务已授权" : " · 服务运行，待授权")
+                : " · 服务未连接");
         addStatus("Shizuku", shizukuState, shizukuGranted);
         addStatus("Root", s.rootAvailable ? "检测到 su" : "无", s.rootAvailable);
 
@@ -331,7 +349,7 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
                 .append("3. 把 BetterHeybox 加入修补模块。\n")
                 .append("4. 破解签名校验选择 Extreme。\n")
                 .append("5. 安装修补后的小黑盒并启动一次。\n")
-                .append("6. 回到本页确认“NPatch 注入”和“设置服务”。\n\n");
+                .append("6. 回到本页，刷新后确认“实际 Hook”。\n\n");
 
         if (s.npatchPatched) {
             message.append("当前检测：小黑盒已 NPatch 修补；签名绕过 = ")
@@ -370,7 +388,7 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
         right.setTextSize(13);
         if (ok) right.setTypeface(Typeface.DEFAULT_BOLD);
         right.setGravity(Gravity.END);
-        right.setMaxWidth(dp(230));
+        right.setMaxWidth(dp(250));
         row.addView(right);
         statusContainer.addView(row);
     }
@@ -451,10 +469,15 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
 
     private void openPackageOrWeb(String packageName, String url) {
         if (isInstalled(packageName)) {
-            openPackage(packageName);
-            return;
+            Intent launch = getPackageManager().getLaunchIntentForPackage(packageName);
+            if (launch != null) {
+                try {
+                    startActivity(launch);
+                    return;
+                } catch (Throwable ignored) {
+                }
+            }
         }
-        // Shizuku+ may use Compat Hub/drop-in while the manager package is not launchable.
         if (RootlessEnvironment.SHIZUKU_PLUS_PACKAGE.equals(packageName)
                 && isInstalled(RootlessEnvironment.SHIZUKU_COMPAT_PACKAGE)) {
             Intent compat = getPackageManager().getLaunchIntentForPackage(
@@ -499,9 +522,7 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
     }
 
     private void toast(String message) {
-        if (!destroyed) {
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
-        }
+        if (!destroyed) Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
     private LinearLayout.LayoutParams matchWrap() {
