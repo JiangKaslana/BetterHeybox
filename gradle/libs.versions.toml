@@ -6,6 +6,7 @@ shizuku = "13.1.5"
 
 [libraries]
 libxposed-api = { module = "io.github.libxposed:api", version.ref = "libxposed" }
+libxposed-interface = { module = "io.github.libxposed:interface", version.ref = "libxposed" }
 libxposed-service = { module = "io.github.libxposed:service", version.ref = "libxposed" }
 dexkit = { module = "org.luckypray:dexkit", version.ref = "dexkit" }
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
