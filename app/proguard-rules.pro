@@ -7,8 +7,16 @@
 
 -keep class com.better.heybox.** { *; }
 
+# Shizuku.newProcess is intentionally reached by reflection so it can survive
+# API source revisions where the transitional method changes visibility.
+-keep class rikka.shizuku.Shizuku {
+    *** newProcess(...);
+}
+-keep class rikka.shizuku.ShizukuRemoteProcess { *; }
+
 -dontwarn org.luckypray.**
 -dontwarn com.google.flatbuffers.**
 -dontwarn org.lsposed.**
 -dontwarn hidden.**
 -dontwarn dev.rikka.**
+-dontwarn rikka.shizuku.**
