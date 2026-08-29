@@ -22,12 +22,12 @@ NPatch 无 Root 模式要求 Android 9（API 28）及以上；Android 8/8.1 仍�
 1. 安装 NPatch。
 2. 在 NPatch 中选择小黑盒 `com.max.xiaoheihe` 进行本地修补。
 3. 把 BetterHeybox 模块加入本次修补。
-4. **破解签名校验选择 `Extreme`**。BetterHeybox 已知在低级别签名绕过下可能出现参数缺失/闪退。
+4. **破解签名校验选择 `Extreme`**。这是 BetterHeybox 当前明确验证/要求的模式；不要把 Seccomp / Stealth 当成 Extreme 的等价“更高档”。
 5. 安装修补后的小黑盒。
 6. 启动小黑盒一次，再打开桌面的 BetterHeybox。
 7. 管理器应显示：
    - 小黑盒 NPatch 注入：已检测到
-   - 签名绕过：Extreme（或更高模式）
+   - 签名绕过：Extreme
    - 设置服务：libxposed 或 NPatch Remote
    - 小黑盒运行时可看到 `实际 Hook` 与 API 102 目标进程状态
 
