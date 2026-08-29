@@ -72,49 +72,45 @@ public final class ShizukuBridge {
     }
 
     /**
-     * Execute one short command using the legacy process bridge.
+     * Execute one short command through the Shizuku process bridge.
      *
-     * <p>The API is intentionally invoked reflectively because upstream marks
-     * {@code newProcess} as transitional in newer source revisions, while API
-     * 13 servers (including Shizuku+) keep it for root-app compatibility.</p>
+     * <p>API 13 keeps {@code Shizuku.newProcess} as a private transitional API,
+     * therefore only that factory call is reflective. The returned object extends
+     * {@link Process}, so all stream/lifecycle handling uses the normal Java API.
+     * This also keeps the release build resilient to implementation-class renames.</p>
      */
     public static Result run(String... command) {
         if (!hasPermission()) {
             return Result.failure("Shizuku 未授权");
         }
-        Object process = null;
+        Process process = null;
         try {
             Method newProcess = Shizuku.class.getDeclaredMethod(
                     "newProcess", String[].class, String[].class, String.class);
             newProcess.setAccessible(true);
-            process = newProcess.invoke(null, command, null, null);
-            if (process == null) {
+            Object remote = newProcess.invoke(null, command, null, null);
+            if (!(remote instanceof Process)) {
                 return Result.failure("Shizuku 进程创建失败");
             }
+            process = (Process) remote;
 
-            Method waitFor = process.getClass().getMethod("waitFor");
-            Method getInputStream = process.getClass().getMethod("getInputStream");
-            Method getErrorStream = process.getClass().getMethod("getErrorStream");
-            Method destroy = process.getClass().getMethod("destroy");
-
-            int exitCode = (Integer) waitFor.invoke(process);
-            String stdout = readAll((InputStream) getInputStream.invoke(process));
-            String stderr = readAll((InputStream) getErrorStream.invoke(process));
-            try {
-                destroy.invoke(process);
-            } catch (Throwable ignored) {
-            }
+            int exitCode = process.waitFor();
+            String stdout = readAll(process.getInputStream());
+            String stderr = readAll(process.getErrorStream());
+            process.destroy();
+            process = null;
             return new Result(exitCode == 0, exitCode, stdout, stderr, null);
         } catch (Throwable t) {
-            if (process != null) {
-                try {
-                    process.getClass().getMethod("destroy").invoke(process);
-                } catch (Throwable ignored) {
-                }
-            }
             Throwable cause = t.getCause() != null ? t.getCause() : t;
             return Result.failure(cause.getClass().getSimpleName() + ": "
                     + String.valueOf(cause.getMessage()));
+        } finally {
+            if (process != null) {
+                try {
+                    process.destroy();
+                } catch (Throwable ignored) {
+                }
+            }
         }
     }
 
