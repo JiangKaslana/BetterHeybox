@@ -2,6 +2,7 @@ package com.better.heybox.hooks;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -15,6 +16,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -30,6 +32,7 @@ import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -39,6 +42,7 @@ import com.better.heybox.App;
 import com.better.heybox.BuildFlags;
 import com.better.heybox.Checkpoint;
 import com.better.heybox.ConfigBackup;
+import com.better.heybox.DexKitResolver;
 import com.better.heybox.HeyboxPrefs;
 import com.better.heybox.LogExport;
 import com.better.heybox.LogRecorder;
@@ -47,9 +51,6 @@ import com.better.heybox.VideoDownloadManager;
 import com.better.heybox.MainModule;
 import com.better.heybox.PreferenceReceiver;
 
-/**
- * 小黑盒设置页入口注入 + 内嵌原生风格设置面板（TitleBar + 分组卡片 + SettingItemView 开关，深浅色跟随小黑盒主题）。
- */
 public final class SettingsEntryHook {
 
     private final MainModule module;
@@ -173,35 +174,35 @@ public final class SettingsEntryHook {
                     new SwitchDef("屏蔽推广贴", null, App.KEY_PROMOTE_AD, true, false),
             }),
             new SettingsGroup("视频下载", new SwitchDef[]{
-                    new SwitchDef("下载视频", "在支持的视频上显示下载入口，保存到你选择的文件夹（默认相册 Movies/BetterHeybox）", App.KEY_VIDEO_DOWNLOAD, true, false),
-                    new SwitchDef("保存位置", "点击选择保存文件夹（系统文件选择器），完成后通知会显示保存路径", null, false, false, true, null, false, false, false, false, false, false, true),
-                    new SwitchDef("自动转存 MP4", "HLS 分片下载合并后自动转封装为 MP4（无转码、无损，失败时保留 ts）", App.KEY_VIDEO_TO_MP4, true, false),
+                    new SwitchDef("下载视频", "在支持的视频上显示下载入口", App.KEY_VIDEO_DOWNLOAD, true, false),
+                    new SwitchDef("保存位置", "点击选择保存文件夹", null, false, false, true, null, false, false, false, false, false, false, true),
+                    new SwitchDef("转存 MP4", "下载合并后自动转封装为 MP4", App.KEY_VIDEO_TO_MP4, true, false),
             }),
             new SettingsGroup("解除复制", new SwitchDef[]{
                     new SwitchDef("解除复制", "恢复系统标准文本选择", App.KEY_COPY_POST, true, false),
-                    new SwitchDef("自绘制文本选择", "选区、高亮与复制菜单全部由模块自绘，不触发系统/小黑盒选择 UI（需开启「解除复制」）", App.KEY_CUSTOM_TEXT_SELECT, false, false),
+                    new SwitchDef("自绘制文本选择", "用于修复可能的选区错误（需开启「解除复制」）", App.KEY_CUSTOM_TEXT_SELECT, false, false),
                     new SwitchDef("系统分享图片", "在图片长按菜单中打开系统分享", App.KEY_SYSTEM_SHARE, true, false),
             }),
             new SettingsGroup("分享净化", new SwitchDef[]{
-                    new SwitchDef("净化分享链接", "复制链接 / 分享到 QQ、微信等渠道时，自动去掉 h_camp、h_session_id、h_src、new_post_share_style 等追踪参数（即时生效）", App.KEY_PURIFY_SHARE_LINK, true, false),
+                    new SwitchDef("净化分享链接", null, App.KEY_PURIFY_SHARE_LINK, true, false),
             }),
             new SettingsGroup("每日任务", new SwitchDef[]{
-                    new SwitchDef("自动完成每日分享任务", "自动完成 3 种分享任务：分享任意帖子 / 分享游戏详情 / 分享游戏评价（不拦截 QQ 分享）", App.KEY_DAILY_TASK_ENABLED, false, false),
+                    new SwitchDef("自动完成每日分享任务", null, App.KEY_DAILY_TASK_ENABLED, false, false),
                     new SwitchDef("帖子链接", "任务一：分享任意帖子", null, false, false, true, App.KEY_DAILY_TASK_PICTURE),
                     new SwitchDef("游戏详情链接", "任务二：分享游戏详情", null, false, false, true, App.KEY_DAILY_TASK_NORMAL),
                     new SwitchDef("游戏评价链接", "任务三：分享游戏评价", null, false, false, true, App.KEY_DAILY_TASK_CHANNEL),
-                    new SwitchDef("分享渠道", "自动分享使用的渠道：QQ / 微信 / 微博（默认 QQ）", App.KEY_SHARE_CHANNEL, false, false, true, null, false, true),
-                    new SwitchDef("清除今日打卡", "清除今日已完成状态，立即重新尝试打卡（失败后用于重试）", null, false, false, true, null, true),
+                    new SwitchDef("分享渠道", null, App.KEY_SHARE_CHANNEL, false, false, true, null, false, true),
+                    new SwitchDef("清除今日打卡", null, null, false, false, true, null, true),
             }),
             new SettingsGroup("通用", new SwitchDef[]{
-                    new SwitchDef("伪装通知权限", "让小黑盒认为通知已开启，获得签到加成（不真正申请权限）", App.KEY_FAKE_NOTIFICATION, false, false),
+                    new SwitchDef("伪装通知权限", "让小黑盒认为通知已开启，获得签到加成", App.KEY_FAKE_NOTIFICATION, false, false),
                     new SwitchDef("屏蔽更新", "屏蔽小黑盒更新入口", App.KEY_BLOCK_UPDATE, false, false),
-                    new SwitchDef("记录日志", "开启后自动记录模块日志到文件（正式版仅记录错误级日志）", App.KEY_LOG, false, false),
-                    new SwitchDef("导出日志", "把模块日志保存为文本文件（含运行状态检查点）", null, false, false, true, null, false, false, false, false, true, false),
+                    new SwitchDef("记录日志", null, App.KEY_LOG, false, false),
+                    new SwitchDef("导出日志", null, null, false, false, true, null, false, false, false, false, true, false),
             }),
             new SettingsGroup("配置备份", new SwitchDef[]{
-                    new SwitchDef("导出配置", "把所有开关和分享链接保存为 JSON 文件", null, false, false, true, true, false),
-                    new SwitchDef("导入配置", "从 JSON 文件恢复全部设置", null, false, false, true, false, true),
+                    new SwitchDef("导出配置", null, null, false, false, true, true, false),
+                    new SwitchDef("导入配置", null, null, false, false, true, false, true),
             }),
     };
     private static SettingsGroup buildBottomTabGroup(Activity activity) {
@@ -237,7 +238,7 @@ public final class SettingsEntryHook {
                 SwitchDef[] items = new SwitchDef[g.items.length + 1];
                 System.arraycopy(g.items, 0, items, 0, g.items.length);
                 items[g.items.length] = new SwitchDef(
-                        "运行状态", "查看模块运行检查点（仅调试版显示）", null, false, false,
+                        "运行状态", "查看模块运行检查点", null, false, false,
                         true, null, false, false, false, false, false, true);
                 out[i] = new SettingsGroup(g.title, items);
             } else {
@@ -249,17 +250,22 @@ public final class SettingsEntryHook {
     private void hookSettingsEntry(ClassLoader cl) {
         try {
             Class<?> clazz = Class.forName("com.max.xiaoheihe.module.account.GeneralSettingsActivity", false, cl);
-            Method setupMethod;
-            try {
-                setupMethod = clazz.getDeclaredMethod("G1");
-            } catch (NoSuchMethodException ignored) {
-                setupMethod = clazz.getDeclaredMethod("L1");
+            Method setupMethod = findSetupMethod(clazz);
+            if (setupMethod == null) {
+                // 混淆名全部失效时的兜底：挂生命周期方法，靠重试循环等待列表构建完成
+                setupMethod = findLifecycleFallback(clazz);
             }
+            if (setupMethod == null) {
+                module.logd(Log.ERROR, module.TAG, "✘ 未找到设置页入口方法（G1/L1/onResume 均不可用）");
+                return;
+            }
+            final Class<?> entryClass = clazz;
             module.hook(setupMethod).intercept(chain -> {
                 Object result = chain.proceed();
                 try {
                     Object thisObj = chain.getThisObject();
-                    if (thisObj instanceof Activity) {
+                    // 兜底走生命周期方法时可能命中父类实现，仅对设置页 Activity 生效
+                    if (thisObj instanceof Activity && entryClass.isInstance(thisObj)) {
                         final Activity activity = (Activity) thisObj;
                         activity.getWindow().getDecorView().post(new Runnable() {
                             @Override
@@ -280,6 +286,33 @@ public final class SettingsEntryHook {
             module.logd(Log.ERROR, module.TAG, "✘ 设置页入口 Hook 失败", t);
         }
     }
+    /** 入口方法解析：先按已知混淆名快速匹配，跨版本失效后由 {@link #findLifecycleFallback} 兜底 */
+    private Method findSetupMethod(Class<?> clazz) {
+        for (String name : new String[]{"G1", "L1"}) {
+            try {
+                return clazz.getDeclaredMethod(name);
+            } catch (NoSuchMethodException ignored) {
+            }
+        }
+        return null;
+    }
+
+    /** 沿继承链找 onResume（框架方法名永不混淆） */
+    private Method findLifecycleFallback(Class<?> clazz) {
+        Class<?> c = clazz;
+        while (c != null && c != Object.class) {
+            try {
+                Method m = c.getDeclaredMethod("onResume");
+                module.logd(Log.WARN, module.TAG, "设置页入口混淆名失效，回退生命周期 Hook: "
+                        + c.getSimpleName() + ".onResume");
+                return m;
+            } catch (NoSuchMethodException ignored) {
+                c = c.getSuperclass();
+            }
+        }
+        return null;
+    }
+
     private void hookActivityResult(Class<?> clazz) {
         try {
             Method m = findOnActivityResult(clazz);
@@ -388,13 +421,84 @@ public final class SettingsEntryHook {
         return null;
     }
 
-    /** 「保存位置」行点击：已设置时给「换目录 / 恢复默认」，否则直接打开系统文件夹选择器 */
-    private void showSaveDirDialog(Activity activity) {
+    /** 「保存位置」行点击：已设置时给「换目录 / 恢复默认」（小黑盒原生弹窗），否则直接打开系统文件夹选择器 */
+    private void showSaveDirDialog(final Activity activity) {
         String current = HeyboxPrefs.getString(App.KEY_VIDEO_DIR, null);
         if (current == null || !current.startsWith("content:")) {
             startDirPicker(activity);
             return;
         }
+        DexKitResolver.getHeyboxDialogSpec(module, activity, new DexKitResolver.SpecCallback() {
+            @Override
+            public void onReady(DexKitResolver.HeyboxDialogSpec spec) {
+                try {
+                    showSaveDirDialogNative(activity, current, spec);
+                } catch (Throwable t) {
+                    module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗不可用，回退系统弹窗: " + t);
+                    showSaveDirDialogFallback(activity, current);
+                }
+            }
+
+            @Override
+            public void onFailed(String reason) {
+                module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗解析失败(" + reason + ")，回退系统弹窗");
+                showSaveDirDialogFallback(activity, current);
+            }
+        });
+    }
+
+    private void showSaveDirDialogNative(final Activity activity, final String current,
+                                         DexKitResolver.HeyboxDialogSpec spec) throws Exception {
+        TextView message = new TextView(activity);
+        int pad = module.dp(activity, 10);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, pad, 0, pad * 2);
+        message.setLayoutParams(lp);
+        message.setPadding(pad, pad, pad, pad);
+        message.setText("当前：" + describeSaveDir(activity, current)
+                + "\n\n默认位置为相册 Movies/BetterHeybox");
+        message.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        try {
+            int colorId = activity.getResources().getIdentifier(
+                    "color_text_primary_day_night", "color", MainModule.TARGET_PKG);
+            if (colorId != 0) {
+                message.setTextColor(activity.getResources().getColor(colorId));
+            }
+        } catch (Throwable ignored) {
+        }
+        DialogInterface.OnClickListener pick = (d, w) -> {
+            d.dismiss();
+            startDirPicker(activity);
+        };
+        DialogInterface.OnClickListener reset = (d, w) -> {
+            HeyboxPrefs.setString(App.KEY_VIDEO_DIR, "");
+            Toast.makeText(activity, "已恢复默认：Movies/BetterHeybox",
+                    Toast.LENGTH_SHORT).show();
+            LogRecorder.recordEvent("视频保存位置已恢复默认");
+            d.dismiss();
+        };
+        spec.buildAndShow(activity, "保存位置", message, "选择其他文件夹", pick, "恢复默认", reset);
+        module.logd(Log.INFO, module.TAG, "✔ 使用小黑盒原生弹窗管理保存位置");
+    }
+
+    /** 保存位置展示名：优先查 DocumentsProvider 显示名，失败则取 URI 末段，再不行给通用描述 */
+    private String describeSaveDir(Activity activity, String current) {
+        String name = queryDirDisplayName(activity, Uri.parse(current));
+        if (name == null || name.isEmpty()) {
+            try {
+                String decoded = Uri.decode(current);
+                int idx = decoded.lastIndexOf('/');
+                if (idx >= 0 && idx < decoded.length() - 1) {
+                    name = decoded.substring(idx + 1);
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return name == null || name.isEmpty() ? "已选择的文件夹" : name;
+    }
+
+    private void showSaveDirDialogFallback(final Activity activity, final String current) {
         try {
             String name = queryDirDisplayName(activity, Uri.parse(current));
             new AlertDialog.Builder(activity)
@@ -456,11 +560,10 @@ public final class SettingsEntryHook {
             if (binding == null) {
                 return false;
             }
-            Object listObj = binding.getClass().getMethod("b").invoke(binding);
-            if (!(listObj instanceof LinearLayout)) {
+            LinearLayout list = resolveSettingsList(activity, binding);
+            if (list == null) {
                 return false;
             }
-            LinearLayout list = (LinearLayout) listObj;
             for (int i = list.getChildCount() - 1; i >= 0; i--) {
                 if (ENTRY_TAG.equals(list.getChildAt(i).getTag())) {
                     list.removeViewAt(i);
@@ -504,10 +607,75 @@ public final class SettingsEntryHook {
                     return f.get(activity);
                 }
             }
+            for (Field f : activity.getClass().getDeclaredFields()) {
+                if (!isViewBindingShape(f.getType())) {
+                    continue;
+                }
+                f.setAccessible(true);
+                Object binding = f.get(activity);
+                if (binding != null) {
+                    module.logd(Log.INFO, module.TAG,
+                            "GeneralSettings binding 已按 ViewBinding 形态解析: " + f.getType().getName());
+                    return binding;
+                }
+            }
         } catch (Throwable t) {
             module.logd(Log.WARN, module.TAG, "查找 GeneralSettings binding 失败: " + t);
         }
         return null;
+    }
+    private static boolean isViewBindingShape(Class<?> type) {
+        if (type.isInterface() || type.isPrimitive()) {
+            return false;
+        }
+        for (Class<?> itf : type.getInterfaces()) {
+            Method[] ms = itf.getDeclaredMethods();
+            if (ms.length == 1 && ms[0].getParameterCount() == 0
+                    && ms[0].getReturnType() == View.class) {
+                return true;
+            }
+        }
+        return false;
+    }
+    private LinearLayout resolveSettingsList(Activity activity, Object binding) {
+        for (Method m : binding.getClass().getMethods()) {
+            if (m.getParameterCount() != 0 || m.getReturnType() != LinearLayout.class) {
+                continue;
+            }
+            try {
+                Object result = m.invoke(binding);
+                if (result instanceof LinearLayout && isViewAttachedUnder((View) result, activity)) {
+                    return (LinearLayout) result;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        for (Method m : binding.getClass().getMethods()) {
+            if (m.getParameterCount() != 0 || m.getReturnType() != LinearLayout.class) {
+                continue;
+            }
+            try {
+                Object result = m.invoke(binding);
+                if (result instanceof LinearLayout) {
+                    return (LinearLayout) result;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static boolean isViewAttachedUnder(View view, Activity activity) {
+        try {
+            Object decor = activity.getWindow().getDecorView();
+            for (ViewParent p = view.getParent(); p instanceof View; p = ((View) p).getParent()) {
+                if (p == decor) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
     }
 
     private void showEmbeddedSettings(final Activity activity) {
@@ -743,7 +911,13 @@ public final class SettingsEntryHook {
 
             itemCls.getMethod("setTitle", String.class).invoke(item, def.title);
             if (def.desc != null) {
+                // 标题下方灰色小字介绍：setTitleDesc 只写文本，tvTitleDesc 默认 GONE，
+                // 还需打开可见性开关（f(boolean)，混淆名跨版本会变，用探针自动解析）
                 itemCls.getMethod("setTitleDesc", String.class).invoke(item, def.desc);
+                Method descToggle = resolveDescToggle(itemCls, activity);
+                if (descToggle != null) {
+                    descToggle.invoke(item, true);
+                }
             }
             Class<?> typeEnum = Class.forName(
                     "com.max.xiaoheihe.module.account.component.SettingItemView$Type", false, cl);
@@ -831,6 +1005,65 @@ public final class SettingsEntryHook {
             return null;
         }
     }
+    /** 「标题下描述」可见性开关（SettingItemView.f(boolean)），每进程解析一次 */
+    private static Method sDescToggle;
+    private static final String DESC_PROBE_TEXT = "BH_DESC_PROBE";
+
+    /**
+     * 解析描述可见性开关方法：用一个不挂到窗口的一次性 SettingItemView，
+     * 逐个尝试 boolean 单参方法，能把 {@code setTitleDesc} 写入的探针 TextView 点亮的就是它。
+     */
+    private Method resolveDescToggle(Class<?> itemCls, Activity activity) {
+        if (sDescToggle != null) {
+            return sDescToggle;
+        }
+        try {
+            Object probe = itemCls.getConstructor(Context.class).newInstance(activity);
+            itemCls.getMethod("setTitleDesc", String.class).invoke(probe, DESC_PROBE_TEXT);
+            for (Method m : itemCls.getDeclaredMethods()) {
+                if (Modifier.isStatic(m.getModifiers())
+                        || m.getParameterCount() != 1
+                        || m.getParameterTypes()[0] != boolean.class
+                        || m.getReturnType() != void.class) {
+                    continue;
+                }
+                try {
+                    m.invoke(probe, true);
+                    boolean lit = isProbeDescVisible(probe);
+                    m.invoke(probe, false);
+                    if (lit) {
+                        sDescToggle = m;
+                        module.logd(Log.INFO, module.TAG, "desc 可见性开关已解析: " + m.getName() + "(boolean)");
+                        return sDescToggle;
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    /** 在（未挂载的）视图树中查找探针文本 TextView 是否可见 */
+    private static boolean isProbeDescVisible(Object root) {
+        if (!(root instanceof View)) {
+            return false;
+        }
+        if (root instanceof TextView
+                && DESC_PROBE_TEXT.equals(((TextView) root).getText().toString())) {
+            return ((TextView) root).getVisibility() == View.VISIBLE;
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) root;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                if (isProbeDescVisible(vg.getChildAt(i))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private int resId(Activity activity, String name, String type, int fallback) {
         try {
             int id = activity.getResources().getIdentifier(name, type, MainModule.TARGET_PKG);
@@ -840,91 +1073,81 @@ public final class SettingsEntryHook {
         }
     }
 
-    /** 关闭原生弹窗：按钮回调参数 [0] 为 DialogInterface，小黑盒 HeyBoxDialog 需手动 dismiss */
-    private static void dismissDialog(Object[] args) {
-        if (args == null || args.length == 0) {
-            return;
-        }
-        try {
-            if (args[0] instanceof DialogInterface) {
-                ((DialogInterface) args[0]).dismiss();
-            }
-        } catch (Throwable ignored) {
-        }
-    }
     private void showChannelDialog(final Activity activity, final SwitchDef def) {
+        DexKitResolver.getHeyboxDialogSpec(module, activity, new DexKitResolver.SpecCallback() {
+            @Override
+            public void onReady(DexKitResolver.HeyboxDialogSpec spec) {
+                try {
+                    showChannelDialogNative(activity, spec);
+                } catch (Throwable t) {
+                    module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗不可用，回退系统弹窗: " + t);
+                    showChannelDialogFallback(activity, def);
+                }
+            }
+
+            @Override
+            public void onFailed(String reason) {
+                module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗解析失败(" + reason + ")，回退系统弹窗");
+                showChannelDialogFallback(activity, def);
+            }
+        });
+    }
+
+    private void showChannelDialogNative(final Activity activity, DexKitResolver.HeyboxDialogSpec spec)
+            throws Exception {
         final String[] channels = {"QQ", "WECHAT", "WEIBO"};
         final String[] labels = {"QQ / QQ空间", "微信 / 朋友圈", "微博"};
         String cur = module.getString(App.KEY_SHARE_CHANNEL, "QQ");
         final int checked = "WECHAT".equals(cur) ? 1 : ("WEIBO".equals(cur) ? 2 : 0);
-        try {
-            ClassLoader cl = activity.getClassLoader();
-            Class<?> builderCls = Class.forName("com.max.hbcommon.view.d$i", false, cl);
-            Object builder = builderCls.getConstructor(Context.class).newInstance(activity);
-            LinearLayout list = new LinearLayout(activity);
-            list.setOrientation(LinearLayout.VERTICAL);
-            int pad = module.dp(activity, 8);
-            list.setPadding(pad, pad, pad, pad);
-            for (int i = 0; i < labels.length; i++) {
-                final int index = i;
-                TextView row = new TextView(activity);
-                row.setText(labels[i]);
-                row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(pad, module.dp(activity, 14), pad, module.dp(activity, 14));
-                int rowColor = index == checked ? 0xFF1677FF : 0xFF333333;
+        LinearLayout list = new LinearLayout(activity);
+        list.setOrientation(LinearLayout.VERTICAL);
+        int pad = module.dp(activity, 8);
+        list.setPadding(pad, pad, pad, pad);
+        for (int i = 0; i < labels.length; i++) {
+            final int index = i;
+            TextView row = new TextView(activity);
+            row.setText(labels[i]);
+            row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(pad, module.dp(activity, 14), pad, module.dp(activity, 14));
+            int rowColor = index == checked ? 0xFF1677FF : 0xFF333333;
+            try {
+                int colorId = activity.getResources().getIdentifier(
+                        index == checked ? "color_text_link_day_night" : "color_text_primary_day_night",
+                        "color", MainModule.TARGET_PKG);
+                if (colorId != 0) {
+                    rowColor = activity.getResources().getColor(colorId);
+                }
+            } catch (Throwable ignored) {
+            }
+            row.setTextColor(rowColor);
+            row.setClickable(true);
+            row.setFocusable(true);
+            list.addView(row, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        Dialog dialog = spec.buildAndShow(activity, "分享渠道", list, null, null,
+                "取消", (d, w) -> d.dismiss());
+        for (int i = 0; i < labels.length; i++) {
+            final int index = i;
+            View row = list.getChildAt(i);
+            row.setOnClickListener(v -> {
                 try {
-                    int colorId = activity.getResources().getIdentifier(
-                            index == checked ? "color_text_link_day_night" : "color_text_primary_day_night",
-                            "color", MainModule.TARGET_PKG);
-                    if (colorId != 0) {
-                        rowColor = activity.getResources().getColor(colorId);
-                    }
+                    HeyboxPrefs.init(activity);
+                    HeyboxPrefs.setString(App.KEY_SHARE_CHANNEL, channels[index]);
+                    LogRecorder.recordEvent("分享渠道已选择: " + channels[index]);
+                    Toast.makeText(activity, "分享渠道已设为 " + labels[index],
+                            Toast.LENGTH_SHORT).show();
+                } catch (Throwable t) {
+                    module.logd(Log.WARN, module.TAG, "保存分享渠道失败: " + t);
+                }
+                try {
+                    dialog.dismiss();
                 } catch (Throwable ignored) {
                 }
-                row.setTextColor(rowColor);
-                row.setClickable(true);
-                row.setFocusable(true);
-                list.addView(row, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            }
-
-            builderCls.getMethod("B", CharSequence.class).invoke(builder, "分享渠道");
-            builderCls.getMethod("i", View.class).invoke(builder, list);
-            Class<?> onClickCls = DialogInterface.OnClickListener.class;
-            Object cancelListener = java.lang.reflect.Proxy.newProxyInstance(
-                    cl, new Class<?>[]{onClickCls}, (proxy, method, args) -> {
-                        if ("onClick".equals(method.getName())) {
-                            dismissDialog(args);
-                        }
-                        return null;
-                    });
-            builderCls.getMethod("r", CharSequence.class, onClickCls).invoke(builder, "取消", cancelListener);
-            final Object heyBoxDialog = builderCls.getMethod("J").invoke(builder);
-            for (int i = 0; i < labels.length; i++) {
-                final int index = i;
-                View row = list.getChildAt(i);
-                row.setOnClickListener(v -> {
-                    try {
-                        HeyboxPrefs.init(activity);
-                        HeyboxPrefs.setString(App.KEY_SHARE_CHANNEL, channels[index]);
-                        LogRecorder.recordEvent("分享渠道已选择: " + channels[index]);
-                        Toast.makeText(activity, "分享渠道已设为 " + labels[index],
-                                Toast.LENGTH_SHORT).show();
-                    } catch (Throwable t) {
-                        module.logd(Log.WARN, module.TAG, "保存分享渠道失败: " + t);
-                    }
-                    try {
-                        heyBoxDialog.getClass().getMethod("dismiss").invoke(heyBoxDialog);
-                    } catch (Throwable ignored) {
-                    }
-                });
-            }
-            module.logd(Log.INFO, module.TAG, "✔ 使用小黑盒原生弹窗选择分享渠道");
-        } catch (Throwable t) {
-            module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗不可用，回退系统弹窗: " + t);
-            showChannelDialogFallback(activity, def);
+            });
         }
+        module.logd(Log.INFO, module.TAG, "✔ 使用小黑盒原生弹窗选择分享渠道");
     }
     private void showChannelDialogFallback(final Activity activity, final SwitchDef def) {
         final String[] channels = {"QQ", "WECHAT", "WEIBO"};
@@ -954,73 +1177,69 @@ public final class SettingsEntryHook {
     }
 
     private void showEditLinkDialog(final Activity activity, final String title, final String key) {
+        DexKitResolver.getHeyboxDialogSpec(module, activity, new DexKitResolver.SpecCallback() {
+            @Override
+            public void onReady(DexKitResolver.HeyboxDialogSpec spec) {
+                try {
+                    showEditLinkDialogNative(activity, title, key, spec);
+                } catch (Throwable t) {
+                    module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗不可用，回退系统弹窗: " + t);
+                    showEditLinkDialogFallback(activity, title, key);
+                }
+            }
+
+            @Override
+            public void onFailed(String reason) {
+                module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗解析失败(" + reason + ")，回退系统弹窗");
+                showEditLinkDialogFallback(activity, title, key);
+            }
+        });
+    }
+
+    private void showEditLinkDialogNative(final Activity activity, final String title, final String key,
+                                          DexKitResolver.HeyboxDialogSpec spec) throws Exception {
+        final EditText input = new EditText(activity);
+        int pad = module.dp(activity, 10);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, pad, 0, pad * 2);
+        input.setLayoutParams(lp);
+        input.setPadding(pad, pad, pad, pad);
+        input.setGravity(Gravity.CENTER_VERTICAL);
         try {
-            ClassLoader cl = activity.getClassLoader();
-            Class<?> dialogCls = Class.forName("com.max.hbcommon.view.d", false, cl);
-            Class<?> builderCls = Class.forName("com.max.hbcommon.view.d$i", false, cl);
-            Object builder = builderCls.getConstructor(Context.class).newInstance(activity);
-            final EditText input = new EditText(activity);
-            int pad = module.dp(activity, 10);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.setMargins(0, pad, 0, pad * 2);
-            input.setLayoutParams(lp);
-            input.setPadding(pad, pad, pad, pad);
-            input.setGravity(Gravity.CENTER_VERTICAL);
-            try {
-                int bgId = activity.getResources().getIdentifier(
-                        "bg_dialog_edit", "drawable", MainModule.TARGET_PKG);
-                if (bgId != 0) {
-                    input.setBackgroundResource(bgId);
-                }
-            } catch (Throwable ignored) {
+            int bgId = activity.getResources().getIdentifier(
+                    "bg_dialog_edit", "drawable", MainModule.TARGET_PKG);
+            if (bgId != 0) {
+                input.setBackgroundResource(bgId);
             }
-            try {
-                int colorId = activity.getResources().getIdentifier(
-                        "color_text_primary_day_night", "color", MainModule.TARGET_PKG);
-                if (colorId != 0) {
-                    input.setTextColor(activity.getResources().getColor(colorId));
-                }
-            } catch (Throwable ignored) {
-            }
-            input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-            input.setSingleLine(true);
-            input.setHint("例如：https://api.xiaoheihe.cn/v3/bbs/app/api/web/share?link_id=123456");
-            String cur = HeyboxPrefs.getString(key, "");
-            input.setText(cur == null ? "" : cur);
-            input.setSelection(input.getText().length());
-            builderCls.getMethod("B", CharSequence.class).invoke(builder, title);
-            builderCls.getMethod("i", View.class).invoke(builder, input);
-            Class<?> onClickCls = DialogInterface.OnClickListener.class;
-            Object saveListener = java.lang.reflect.Proxy.newProxyInstance(
-                    cl, new Class<?>[]{onClickCls}, (proxy, method, args) -> {
-                        if ("onClick".equals(method.getName())) {
-                            try {
-                                HeyboxPrefs.setString(key, input.getText().toString().trim());
-                                Toast.makeText(activity, "已保存", Toast.LENGTH_SHORT).show();
-                                module.logd(Log.INFO, module.TAG, "分享链接已保存: " + key);
-                            } catch (Throwable t) {
-                                module.logd(Log.WARN, module.TAG, "保存分享链接失败: " + t);
-                            }
-                            dismissDialog(args);
-                        }
-                        return null;
-                    });
-            Object cancelListener = java.lang.reflect.Proxy.newProxyInstance(
-                    cl, new Class<?>[]{onClickCls}, (proxy, method, args) -> {
-                        if ("onClick".equals(method.getName())) {
-                            dismissDialog(args);
-                        }
-                        return null;
-                    });
-            builderCls.getMethod("x", CharSequence.class, onClickCls).invoke(builder, "保存", saveListener);
-            builderCls.getMethod("r", CharSequence.class, onClickCls).invoke(builder, "取消", cancelListener);
-            builderCls.getMethod("J").invoke(builder);
-            module.logd(Log.INFO, module.TAG, "✔ 使用小黑盒原生弹窗编辑链接: " + key);
-        } catch (Throwable t) {
-            module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗不可用，回退系统弹窗: " + t);
-            showEditLinkDialogFallback(activity, title, key);
+        } catch (Throwable ignored) {
         }
+        try {
+            int colorId = activity.getResources().getIdentifier(
+                    "color_text_primary_day_night", "color", MainModule.TARGET_PKG);
+            if (colorId != 0) {
+                input.setTextColor(activity.getResources().getColor(colorId));
+            }
+        } catch (Throwable ignored) {
+        }
+        input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        input.setSingleLine(true);
+        input.setHint("例如：https://api.xiaoheihe.cn/v3/bbs/app/api/web/share?link_id=123456");
+        String cur = HeyboxPrefs.getString(key, "");
+        input.setText(cur == null ? "" : cur);
+        input.setSelection(input.getText().length());
+        DialogInterface.OnClickListener saveListener = (d, w) -> {
+            try {
+                HeyboxPrefs.setString(key, input.getText().toString().trim());
+                Toast.makeText(activity, "已保存", Toast.LENGTH_SHORT).show();
+                module.logd(Log.INFO, module.TAG, "分享链接已保存: " + key);
+            } catch (Throwable t) {
+                module.logd(Log.WARN, module.TAG, "保存分享链接失败: " + t);
+            }
+            d.dismiss();
+        };
+        spec.buildAndShow(activity, title, input, "保存", saveListener, "取消", (d, w) -> d.dismiss());
+        module.logd(Log.INFO, module.TAG, "✔ 使用小黑盒原生弹窗编辑链接: " + key);
     }
     private void showEditLinkDialogFallback(final Activity activity, final String title, final String key) {
         try {
@@ -1174,62 +1393,60 @@ public final class SettingsEntryHook {
         }
     }
     private void startEmbeddedImport(final Activity activity) {
-        try {
-            ClassLoader cl = activity.getClassLoader();
-            Class<?> builderCls = Class.forName("com.max.hbcommon.view.d$i", false, cl);
-            Object builder = builderCls.getConstructor(Context.class).newInstance(activity);
-            TextView message = new TextView(activity);
-            int pad = module.dp(activity, 10);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.setMargins(0, pad, 0, pad * 2);
-            message.setLayoutParams(lp);
-            message.setPadding(pad, pad, pad, pad);
-            message.setText("导入将覆盖当前所有设置（开关、分享链接、分享渠道等），确定继续？");
-            message.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-            try {
-                int colorId = activity.getResources().getIdentifier(
-                        "color_text_primary_day_night", "color", MainModule.TARGET_PKG);
-                if (colorId != 0) {
-                    message.setTextColor(activity.getResources().getColor(colorId));
+        DexKitResolver.getHeyboxDialogSpec(module, activity, new DexKitResolver.SpecCallback() {
+            @Override
+            public void onReady(DexKitResolver.HeyboxDialogSpec spec) {
+                try {
+                    startEmbeddedImportNative(activity, spec);
+                } catch (Throwable t) {
+                    module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗不可用，回退系统弹窗: " + t);
+                    showEmbeddedImportConfirmFallback(activity);
                 }
-            } catch (Throwable ignored) {
             }
-            builderCls.getMethod("B", CharSequence.class).invoke(builder, "导入配置");
-            builderCls.getMethod("i", View.class).invoke(builder, message);
-            Class<?> onClickCls = DialogInterface.OnClickListener.class;
-            Object importListener = java.lang.reflect.Proxy.newProxyInstance(
-                    cl, new Class<?>[]{onClickCls}, (proxy, method, args) -> {
-                        if ("onClick".equals(method.getName())) {
-                            try {
-                                sPendingPick = uri -> readEmbeddedImport(activity, uri);
-                                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                                intent.setType("application/json");
-                                activity.startActivityForResult(intent, REQUEST_EMBEDDED_IMPORT);
-                            } catch (Throwable t) {
-                                module.logd(Log.ERROR, module.TAG, "打开导入选择器失败: " + t);
-                                Toast.makeText(activity, "导入失败，请重试", Toast.LENGTH_SHORT).show();
-                            }
-                            dismissDialog(args);
-                        }
-                        return null;
-                    });
-            Object cancelListener = java.lang.reflect.Proxy.newProxyInstance(
-                    cl, new Class<?>[]{onClickCls}, (proxy, method, args) -> {
-                        if ("onClick".equals(method.getName())) {
-                            dismissDialog(args);
-                        }
-                        return null;
-                    });
-            builderCls.getMethod("x", CharSequence.class, onClickCls).invoke(builder, "导入", importListener);
-            builderCls.getMethod("r", CharSequence.class, onClickCls).invoke(builder, "取消", cancelListener);
-            builderCls.getMethod("J").invoke(builder);
-            module.logd(Log.INFO, module.TAG, "✔ 使用小黑盒原生弹窗确认导入配置");
-        } catch (Throwable t) {
-            module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗不可用，回退系统弹窗: " + t);
-            showEmbeddedImportConfirmFallback(activity);
+
+            @Override
+            public void onFailed(String reason) {
+                module.logd(Log.WARN, module.TAG, "小黑盒原生弹窗解析失败(" + reason + ")，回退系统弹窗");
+                showEmbeddedImportConfirmFallback(activity);
+            }
+        });
+    }
+
+    private void startEmbeddedImportNative(final Activity activity, DexKitResolver.HeyboxDialogSpec spec)
+            throws Exception {
+        TextView message = new TextView(activity);
+        int pad = module.dp(activity, 10);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, pad, 0, pad * 2);
+        message.setLayoutParams(lp);
+        message.setPadding(pad, pad, pad, pad);
+        message.setText("导入将覆盖当前所有设置（开关、分享链接、分享渠道等），确定继续？");
+        message.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        try {
+            int colorId = activity.getResources().getIdentifier(
+                    "color_text_primary_day_night", "color", MainModule.TARGET_PKG);
+            if (colorId != 0) {
+                message.setTextColor(activity.getResources().getColor(colorId));
+            }
+        } catch (Throwable ignored) {
         }
+        DialogInterface.OnClickListener importListener = (d, w) -> {
+            try {
+                sPendingPick = uri -> readEmbeddedImport(activity, uri);
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("application/json");
+                activity.startActivityForResult(intent, REQUEST_EMBEDDED_IMPORT);
+            } catch (Throwable t) {
+                module.logd(Log.ERROR, module.TAG, "打开导入选择器失败: " + t);
+                Toast.makeText(activity, "导入失败，请重试", Toast.LENGTH_SHORT).show();
+            }
+            d.dismiss();
+        };
+        spec.buildAndShow(activity, "导入配置", message, "导入", importListener,
+                "取消", (d, w) -> d.dismiss());
+        module.logd(Log.INFO, module.TAG, "✔ 使用小黑盒原生弹窗确认导入配置");
     }
 
     private void showEmbeddedImportConfirmFallback(final Activity activity) {

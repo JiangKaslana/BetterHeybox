@@ -99,6 +99,17 @@
 - **屏蔽更新**：提供可选开关，屏蔽小黑盒更新   
 - **记录日志**：提供「记录日志」开关，开启后自动把模块运行日志写入文件
 
+### 更新兼容（DexKit 自动分析）
+
+小黑盒更新常会打乱混淆名，模块通过 [DexKit](https://github.com/LuckyPray/DexKit) 字节码特征分析
+自动重新定位，不必等模块发版适配：
+
+- **原生弹窗自动定位**：以 HeyBoxDialog 内的品牌常量字符串为锚点定位对话框类；
+  Builder 的标题/正文、View 槽位、正向/负向按钮等同签名混淆方法，用 alpha=0 的
+  「隐形探针」按实际渲染位置自动分类；
+  分享渠道 / 链接编辑 / 导入确认 / 保存位置等弹窗全部走该通道，解析失败自动回退系统弹窗
+- **设置页启发式定位**：binding 字段按 ViewBinding 接口形态判定
+
 ## 技术栈
 
 | 项 | 值 |
@@ -106,6 +117,7 @@
 | 语言 | Java 17 |
 | Hook API | `io.github.libxposed:api:102.0.0` |
 | Service | `io.github.libxposed:service:102.0.0` |
+| 字节码分析 | `org.luckypray:dexkit:2.2.0` |
 | compileSdk / targetSdk | 37 |
 | minSdk | 26 |
 | AGP / Gradle | 9.2.1 / 9.7.1 |
@@ -125,10 +137,11 @@ app/src/main/
 │   ├── LogRecorder.java         # 文件日志记录器（日志开关）
 │   ├── VideoDownloadManager.java # 视频下载：任务状态机/注册表/断点续传/HLS 分片/mp4 转封装/保存/通知
 │   ├── PreferenceReceiver.java  # 设置写回广播接收（镜像同步 RemotePreferences）
+│   ├── DexKitResolver.java      # DexKit 自动分析：小黑盒更新后自动定位原生弹窗
 │   └── hooks/                   # 各功能 Hook 按模块拆分
 │       ├── GeneralHook.java     #   通用：版本检测 / 屏蔽更新 / 伪装通知权限
 │       ├── AdFilterHook.java    #   广告过滤：开屏 / 信息流 / 气泡 / 角标
-│       ├── SettingsEntryHook.java # 设置页入口注入 + 内嵌设置面板（原生 HeyBoxDialog）
+│       ├── SettingsEntryHook.java # 设置页入口注入 + 内嵌设置面板（入口混淆名失效自动回退生命周期 Hook）
 │       ├── BottomTabHook.java   #   底部导航栏隐藏（tab 名版本自适应）
 │       ├── PromotePostHook.java #   推广贴屏蔽
 │       ├── TextSelectHook.java  #   解除复制 / 标准文本选择 / 跨行选择
@@ -142,7 +155,7 @@ app/src/main/
 
 ## 模块声明
 
-不再使用 Manifest meta-data 与 `assets/xposed_init`，全部声明在 `META-INF/xposed/`：
+全部声明在 `META-INF/xposed/`：
 
 ```
 app/src/main/resources/META-INF/xposed/
@@ -162,6 +175,8 @@ app/src/main/resources/META-INF/xposed/
    - 命令行/CI：`./gradlew assembleDebug`
    - 或 Android Studio `Build > Make Project`
    - 产物：`app/build/outputs/apk/debug/app-debug.apk`
+   - 正式版 `assembleRelease`：启用 R8 裁剪第三方依赖体积，
+     自有代码在 `proguard-rules.pro` 整包 keep，不影响 Hook 目标定位
 3. **刷入**：
    - 模拟器/真机需 root + **支持 API 102 的 LSPosed**
    - 安装 APK → LSPosed Manager 启用模块。
@@ -173,6 +188,7 @@ app/src/main/resources/META-INF/xposed/
 ## 致谢
 - [LSPosed](https://github.com/LSPosed/LSPosed)
 - [Libxposed api](https://github.com/libxposed/api) — Apache-2.0，现代 Xposed 模块 API
+- [Dexkit](https://github.com/LuckyPray/DexKit) — Apache-2.0，字节码特征分析
 
 ### 部分功能灵感来源
 - [假装开启小黑盒通知权限](https://github.com/Xposed-Modules-Repo/com.chrxw.justenablednotification)
