@@ -180,9 +180,12 @@ public final class RootlessEnvironment {
         public boolean shizukuCompatInstalled;
         public boolean rootAvailable;
 
-        /** BetterHeybox requires Extreme; stronger NPatch modes are accepted too. */
+        /**
+         * BetterHeybox's documented NPatch compatibility path is specifically
+         * Extreme (3). Seccomp/Stealth are different modes, not assumed supersets.
+         */
         public boolean isSignatureBypassCompatible() {
-            return sigBypassLevel >= 3;
+            return sigBypassLevel == 3;
         }
 
         public boolean isRootlessReady() {
