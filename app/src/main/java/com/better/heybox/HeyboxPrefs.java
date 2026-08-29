@@ -4,24 +4,13 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 /**
- * 小黑盒进程内的设置存储（架构调整：所有开关操作都在小黑盒进程内完成，不跨进程）。
+ * Settings stored directly inside the injected Heybox process.
  *
- * <p>背景：内嵌设置面板原先通过「显式广播 → 模块进程 → RemotePreferences」写回，
- * 部分系统会拦截跨进程广播，导致小黑盒内切换开关无效；而模块设置页直写框架
- * RemotePreferences 可以生效。为此把运行时配置改为直接存放在小黑盒自己的目录：</p>
- *
- * <pre>
- *   /data/user/0/com.max.xiaoheihe/shared_prefs/betterheybox.xml
- * </pre>
- *
- * <p>读写规则：</p>
- * <ul>
- *   <li>内嵌面板开关 → {@link #setBoolean} 直接写本文件（立即生效、重启保留）；</li>
- *   <li>Hook 侧 {@code isEnabled} → {@link #getBoolean} 优先本文件，
- *       键不存在时回退框架 RemotePreferences（模块设置页写入的值）；</li>
- *   <li>模块设置页仍写 RemotePreferences（直连框架，已确认可用），
- *       内嵌面板另发尽力而为的镜像广播同步（失败不影响本进程生效）。</li>
- * </ul>
+ * <p>Each write also stores a timestamp. {@link MainModule} compares this local
+ * timestamp with the RemotePreferences timestamp written by the standalone
+ * manager, so whichever UI changed a setting most recently wins. Existing
+ * installations without timestamps keep the old behaviour (Heybox-local value
+ * wins on a tie).</p>
  */
 public final class HeyboxPrefs {
 
@@ -56,6 +45,16 @@ public final class HeyboxPrefs {
         return prefs != null ? prefs.getBoolean(key, defaultValue) : defaultValue;
     }
 
+    public static String getString(String key, String defaultValue) {
+        SharedPreferences prefs = get();
+        return prefs != null ? prefs.getString(key, defaultValue) : defaultValue;
+    }
+
+    public static long getTimestamp(String key) {
+        SharedPreferences prefs = get();
+        return prefs != null ? prefs.getLong(App.timestampKey(key), 0L) : 0L;
+    }
+
     public static boolean contains(String key) {
         SharedPreferences prefs = get();
         return prefs != null && prefs.contains(key);
@@ -66,12 +65,10 @@ public final class HeyboxPrefs {
         if (prefs == null) {
             return false;
         }
-        return prefs.edit().putBoolean(key, value).commit();
-    }
-
-    public static String getString(String key, String defaultValue) {
-        SharedPreferences prefs = get();
-        return prefs != null ? prefs.getString(key, defaultValue) : defaultValue;
+        return prefs.edit()
+                .putBoolean(key, value)
+                .putLong(App.timestampKey(key), System.currentTimeMillis())
+                .commit();
     }
 
     public static boolean setString(String key, String value) {
@@ -79,7 +76,10 @@ public final class HeyboxPrefs {
         if (prefs == null) {
             return false;
         }
-        return prefs.edit().putString(key, value).commit();
+        return prefs.edit()
+                .putString(key, value)
+                .putLong(App.timestampKey(key), System.currentTimeMillis())
+                .commit();
     }
 
     private static Context resolveAppContext() {
