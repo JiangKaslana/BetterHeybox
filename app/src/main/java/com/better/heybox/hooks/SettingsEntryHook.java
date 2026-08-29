@@ -54,9 +54,19 @@ import com.better.heybox.PreferenceReceiver;
 public final class SettingsEntryHook {
 
     private final MainModule module;
+    private static volatile SettingsEntryHook sInstance;
 
     public SettingsEntryHook(MainModule module) {
         this.module = module;
+        sInstance = this;
+    }
+
+    /** 供液态玻璃长按设置入口复用现有小黑盒风格内嵌面板。 */
+    public static void openEmbeddedSettings(Activity activity) {
+        SettingsEntryHook instance = sInstance;
+        if (instance != null && activity != null) {
+            instance.showEmbeddedSettings(activity);
+        }
     }
     public void install(ClassLoader cl) {
         hookSettingsEntry(cl);
@@ -99,7 +109,13 @@ public final class SettingsEntryHook {
         final boolean actionExportLog; // clickRow 动作：导出日志
         final boolean actionRuntimeStatus; // clickRow 动作：查看运行状态（仅 Debug 构建显示）
         final boolean actionPickDir; // clickRow 动作：选择视频保存文件夹（系统 SAF 选择器）
+        boolean actionOpenWeb; // clickRow 动作：编辑并打开小黑盒内置网页
         final boolean actionDownloadManager; // clickRow 动作：打开下载管理页
+        SwitchDef(String title, String desc, String key, boolean def, boolean restart,
+                  boolean clickRow, String editKey, boolean actionOpenWeb, int marker) {
+            this(title, desc, key, def, restart, clickRow, editKey);
+            this.actionOpenWeb = actionOpenWeb;
+        }
         SwitchDef(String title, String desc, String key, boolean def, boolean restart) {
             this(title, desc, key, def, restart, false, null, false, false, false, false, false, false, false, false);
         }
@@ -152,6 +168,7 @@ public final class SettingsEntryHook {
             this.actionExportLog = actionExportLog;
             this.actionRuntimeStatus = actionRuntimeStatus;
             this.actionPickDir = actionPickDir;
+            this.actionOpenWeb = false;
             this.actionDownloadManager = actionDownloadManager;
         }
     }
@@ -194,10 +211,26 @@ public final class SettingsEntryHook {
                     new SwitchDef("分享渠道", null, App.KEY_SHARE_CHANNEL, false, false, true, null, false, true),
                     new SwitchDef("清除今日打卡", null, null, false, false, true, null, true),
             }),
+            new SettingsGroup("液态玻璃", new SwitchDef[]{
+                    new SwitchDef("液态玻璃底栏", "在底部导航显示液态玻璃效果（需重启小黑盒）", App.KEY_LIQUID_GLASS, true, true),
+                    new SwitchDef("沉浸式小白条", "让底栏延伸到系统手势区域", App.KEY_GLASS_IMMERSIVE, true, false),
+                    new SwitchDef("自适应反色", "标签文字与图标随背景亮度切换黑白", App.KEY_GLASS_ADAPTIVE, true, false),
+                    new SwitchDef("玻璃宽度自适应", "隐藏标签后底栏宽度随可见标签数收缩", App.KEY_GLASS_FIT_TABS, false, false),
+                    new SwitchDef("暗色模式底色", "输入颜色值，例如 #000000", null, false, false, true, App.KEY_GLASS_DARK_COLOR),
+                    new SwitchDef("暗色模式不透明度", "输入 5-98 的百分比", null, false, false, true, App.KEY_GLASS_DARK_ALPHA),
+                    new SwitchDef("亮色模式底色", "输入颜色值，例如 #FFFFFF", null, false, false, true, App.KEY_GLASS_LIGHT_COLOR),
+                    new SwitchDef("亮色模式不透明度", "输入 5-98 的百分比", null, false, false, true, App.KEY_GLASS_LIGHT_ALPHA),
+                    new SwitchDef("玻璃条高度", "输入 0 为自动，或 51-99 dp", null, false, false, true, App.KEY_GLASS_BAR_HEIGHT),
+                    new SwitchDef("距屏幕底部", "输入 0-40 dp", null, false, false, true, App.KEY_GLASS_BAR_OFFSET),
+                    new SwitchDef("恢复液态玻璃默认设置", "恢复参考项目的默认外观与布局参数", null, false, false, true, null, false, false, false, false, false, false, false),
+            }),
             new SettingsGroup("通用", new SwitchDef[]{
                     new SwitchDef("伪装通知权限", "让小黑盒认为通知已开启，获得签到加成", App.KEY_FAKE_NOTIFICATION, false, false),
                     new SwitchDef("屏蔽更新", "屏蔽小黑盒更新入口", App.KEY_BLOCK_UPDATE, false, false),
                     new SwitchDef("记录日志", null, App.KEY_LOG, false, false),
+                    new SwitchDef("网页 DevTools", "为小黑盒内置网页开启 Chrome 远程调试", App.KEY_WEBVIEW_DEVTOOLS, false, false),
+                    new SwitchDef("打开网页", "使用小黑盒内置浏览器打开指定网页", null, false, false,
+                            true, App.KEY_WEBVIEW_ENTRY_URL, true, 0),
                     new SwitchDef("导出日志", null, null, false, false, true, null, false, false, false, false, true, false),
             }),
             new SettingsGroup("配置备份", new SwitchDef[]{
@@ -959,6 +992,12 @@ public final class SettingsEntryHook {
                 } else if (def.actionRuntimeStatus) {
                     itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
                             .invoke(item, (View.OnClickListener) v -> showEmbeddedRuntimeStatus(activity));
+                } else if (def.actionOpenWeb) {
+                    itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
+                            .invoke(item, (View.OnClickListener) v -> showOpenWebDialog(activity));
+                } else if ("恢复液态玻璃默认设置".equals(def.title)) {
+                    itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
+                            .invoke(item, (View.OnClickListener) v -> resetLiquidGlassSettings(activity));
                 } else {
                     itemCls.getMethod("setOnClickListener", View.OnClickListener.class)
                             .invoke(item, (View.OnClickListener) v -> showEditLinkDialog(activity, def.title, editKey));
@@ -1176,6 +1215,98 @@ public final class SettingsEntryHook {
         }
     }
 
+    private static final String DEFAULT_WEBVIEW_ENTRY_URL = "https://github.com/Mrmiaomrzh/BetterHeybox";
+
+    private void showOpenWebDialog(final Activity activity) {
+        DexKitResolver.getHeyboxDialogSpec(module, activity, new DexKitResolver.SpecCallback() {
+            @Override public void onReady(DexKitResolver.HeyboxDialogSpec spec) {
+                try { showOpenWebDialogNative(activity, spec); }
+                catch (Throwable t) { module.logd(Log.WARN, module.TAG, "小黑盒原生网页弹窗失败", t); showOpenWebDialogFallback(activity); }
+            }
+            @Override public void onFailed(String reason) {
+                module.logd(Log.WARN, module.TAG, "小黑盒原生网页弹窗解析失败: " + reason);
+                showOpenWebDialogFallback(activity);
+            }
+        });
+    }
+
+    private EditText createWebUrlInput(Activity activity) {
+        EditText input = new EditText(activity);
+        int pad = module.dp(activity, 10);
+        input.setPadding(pad, pad, pad, pad);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        input.setHint("例如：https://example.com");
+        String current = HeyboxPrefs.getString(App.KEY_WEBVIEW_ENTRY_URL, DEFAULT_WEBVIEW_ENTRY_URL);
+        input.setText(current == null || current.trim().isEmpty() ? DEFAULT_WEBVIEW_ENTRY_URL : current);
+        input.setSelection(input.length());
+        try {
+            int bgId = activity.getResources().getIdentifier("bg_dialog_edit", "drawable", MainModule.TARGET_PKG);
+            if (bgId != 0) input.setBackgroundResource(bgId);
+        } catch (Throwable ignored) { }
+        return input;
+    }
+
+    private void saveAndOpenWeb(Activity activity, String raw) {
+        String url = raw == null ? "" : raw.trim();
+        Uri uri = Uri.parse(url);
+        String scheme = uri.getScheme();
+        if (url.isEmpty() || uri.getHost() == null || scheme == null
+                || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+            Toast.makeText(activity, "请输入有效的 http/https 网页地址", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        HeyboxPrefs.setString(App.KEY_WEBVIEW_ENTRY_URL, url);
+        openNativeWeb(activity, url);
+    }
+
+    private void showOpenWebDialogNative(final Activity activity, DexKitResolver.HeyboxDialogSpec spec) throws Exception {
+        final EditText input = createWebUrlInput(activity);
+        spec.buildAndShow(activity, "打开网页", input, "打开",
+                (d, w) -> saveAndOpenWeb(activity, input.getText().toString()),
+                "取消", (d, w) -> d.dismiss());
+    }
+
+    private void showOpenWebDialogFallback(final Activity activity) {
+        try {
+            final EditText input = createWebUrlInput(activity);
+            new AlertDialog.Builder(activity).setTitle("打开网页")
+                    .setMessage("仅支持 http/https，将使用小黑盒内置浏览器打开")
+                    .setView(input).setPositiveButton("打开", (d, w) -> saveAndOpenWeb(activity, input.getText().toString()))
+                    .setNegativeButton("取消", null).show();
+        } catch (Throwable t) { module.logd(Log.WARN, module.TAG, "打开网页编辑框失败", t); }
+    }
+
+    private void openNativeWeb(Activity activity, String url) {
+        try {
+            Class<?> webActivity = Class.forName(
+                    "com.max.xiaoheihe.module.webview.NativeWebActionActivity", false,
+                    activity.getClassLoader());
+            Intent intent = new Intent(activity, webActivity)
+                    .putExtra("pageurl", url)
+                    .putExtra("title", "BetterHeybox");
+            activity.startActivity(intent);
+            LogRecorder.recordEvent("打开小黑盒内置网页: " + url);
+        } catch (Throwable t) {
+            module.logd(Log.ERROR, module.TAG, "启动小黑盒内置浏览器失败", t);
+            Toast.makeText(activity, "小黑盒内置浏览器不可用", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void resetLiquidGlassSettings(Activity activity) {
+        HeyboxPrefs.setBoolean(App.KEY_LIQUID_GLASS, true);
+        HeyboxPrefs.setBoolean(App.KEY_GLASS_IMMERSIVE, true);
+        HeyboxPrefs.setBoolean(App.KEY_GLASS_ADAPTIVE, true);
+        HeyboxPrefs.setString(App.KEY_GLASS_DARK_COLOR, "#000000");
+        HeyboxPrefs.setString(App.KEY_GLASS_DARK_ALPHA, "56");
+        HeyboxPrefs.setString(App.KEY_GLASS_LIGHT_COLOR, "#FFFFFF");
+        HeyboxPrefs.setString(App.KEY_GLASS_LIGHT_ALPHA, "64");
+        HeyboxPrefs.setString(App.KEY_GLASS_BAR_HEIGHT, "0");
+        HeyboxPrefs.setString(App.KEY_GLASS_BAR_OFFSET, "16");
+        Toast.makeText(activity, "液态玻璃设置已恢复默认", Toast.LENGTH_SHORT).show();
+        View panel = mSettingsPanel == null ? null : mSettingsPanel.get();
+        if (panel != null && panel.getParent() != null) showEmbeddedSettings(activity);
+    }
     private void showEditLinkDialog(final Activity activity, final String title, final String key) {
         DexKitResolver.getHeyboxDialogSpec(module, activity, new DexKitResolver.SpecCallback() {
             @Override
@@ -1549,7 +1680,7 @@ public final class SettingsEntryHook {
     /* ==== 下载管理页复用的宿主组件工厂（包内可见） ==== */
 
     /** 解析宿主资源 id */
-    static int hostResId(Context context, String name, String type, int fallback) {
+    public static int hostResId(Context context, String name, String type, int fallback) {
         try {
             int id = context.getResources().getIdentifier(name, type, MainModule.TARGET_PKG);
             return id != 0 ? id : fallback;
@@ -1559,7 +1690,7 @@ public final class SettingsEntryHook {
     }
 
     /** 解析宿主 day_night 颜色资源（跟随深浅色） */
-    static int hostColor(Context context, String name, int fallback) {
+    public static int hostColor(Context context, String name, int fallback) {
         int id = hostResId(context, name, "color", 0);
         if (id != 0) {
             try {
@@ -1575,7 +1706,7 @@ public final class SettingsEntryHook {
      * {@code ((ViewGroup) card.getTag())} 取出后 add 进去（content 已挂进卡片，
      * 直接返回 content 会让调用方二次挂载时触发 child already has a parent）。
      */
-    static ViewGroup hostCard(Context context) {
+    public static ViewGroup hostCard(Context context) {
         try {
             ClassLoader cl = context.getClassLoader();
             Class<?> cardCls = Class.forName("androidx.cardview.widget.CardView", false, cl);

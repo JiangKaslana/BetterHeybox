@@ -7,7 +7,6 @@ public final class ConfigBackup {
 
     public static final String FORMAT = "betterheybox-config";
     public static final int VERSION = 1;
-
     private static final String KEY_FORMAT = "format";
     private static final String KEY_VERSION = "version";
     private static final String KEY_EXPORTED_AT = "exportedAt";
@@ -33,12 +32,24 @@ public final class ConfigBackup {
             App.KEY_DAILY_TASK_ENABLED,
             App.KEY_FAKE_NOTIFICATION,
             App.KEY_LOG,
+            App.KEY_LIQUID_GLASS,
+            App.KEY_GLASS_IMMERSIVE,
+            App.KEY_GLASS_ADAPTIVE,
+            App.KEY_GLASS_FIT_TABS,
     };
     private static final String[] STRING_KEYS = {
             App.KEY_DAILY_TASK_PICTURE,
             App.KEY_DAILY_TASK_NORMAL,
             App.KEY_DAILY_TASK_CHANNEL,
             App.KEY_SHARE_CHANNEL,
+            App.KEY_GLASS_DARK_COLOR,
+            App.KEY_GLASS_DARK_ALPHA,
+            App.KEY_GLASS_LIGHT_COLOR,
+            App.KEY_GLASS_LIGHT_ALPHA,
+            App.KEY_GLASS_BAR_HEIGHT,
+            App.KEY_GLASS_BAR_OFFSET,
+            App.KEY_GLASS_DARK_PRESET,
+            App.KEY_GLASS_LIGHT_PRESET,
     };
     private static final String[] RESTART_KEYS = {
             App.KEY_HIDE_TAB_HOME,
@@ -138,7 +149,9 @@ public final class ConfigBackup {
                 || App.KEY_CORNER_AD.equals(key)
                 || App.KEY_PROMOTE_AD.equals(key)
                 || App.KEY_COPY_POST.equals(key)
-                || App.KEY_SYSTEM_SHARE.equals(key)) {
+                || App.KEY_SYSTEM_SHARE.equals(key)
+                || App.KEY_LIQUID_GLASS.equals(key)
+                || App.KEY_GLASS_ADAPTIVE.equals(key)) {
             return true;
         }
         return false;

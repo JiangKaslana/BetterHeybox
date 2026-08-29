@@ -67,4 +67,5 @@ dependencies {
     compileOnly(libs.libxposed.api)
     implementation(libs.libxposed.service)
     implementation(libs.dexkit)
+    implementation("com.github.QWEA0:liquidglass:90f4ea28e3")
 }

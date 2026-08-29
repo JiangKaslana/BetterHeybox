@@ -31,7 +31,14 @@
 
 ### 界面增强
 
-- **底部导航栏优化**（需重启小黑盒生效）：隐藏底栏tab项
+- **底部导航栏优化**（需重启小黑盒生效）：隐藏底栏 tab 项；
+  隐藏后剩余 tab 自动等分填满整条，当前选中的 tab 被隐藏时自动切换到第一个可见 tab
+- **液态玻璃底栏**（需重启小黑盒生效，Android 13+ 为玻璃效果）：
+  底部导航栏渲染为实时折射/色散的「液态玻璃」效果，带玻璃水滴选中动画、沉浸式小白条，
+  标签/图标颜色随背景亮度自适应反色；**长按首页标题栏右上角图标**或
+  设置页**「通用设置」行**可打开顶部调节面板，实时调节深/浅底色、不透明度、高度、
+  距底部偏移、宽度自适应（选中项加长）等；与底栏隐藏联动，隐藏 tab 后玻璃条同步收缩；
+  Android 12 及以下自动回退毛玻璃效果
 
 ### 帖子增强
 
@@ -98,6 +105,8 @@
 - **伪装通知权限**：让小黑盒认为通知权限已开启，获得**签到加成**  
 - **屏蔽更新**：提供可选开关，屏蔽小黑盒更新   
 - **记录日志**：提供「记录日志」开关，开启后自动把模块运行日志写入文件
+- **网页 DevTools**：为小黑盒内置 WebView 开启 Chrome 远程调试，电脑 `chrome://inspect` 可调试内置网页
+- **打开网页**：输入任意 http/https 地址，用小黑盒内置浏览器打开
 
 ### 更新兼容（DexKit 自动分析）
 
@@ -118,6 +127,7 @@
 | Hook API | `io.github.libxposed:api:102.0.0` |
 | Service | `io.github.libxposed:service:102.0.0` |
 | 字节码分析 | `org.luckypray:dexkit:2.2.0` |
+| 液态玻璃渲染 | `com.github.QWEA0:liquidglass:90f4ea28e3`（JitPack）+ 内嵌 AGSL shader（QmDeve，MIT） |
 | compileSdk / targetSdk | 37 |
 | minSdk | 26 |
 | AGP / Gradle | 9.2.1 / 9.7.1 |
@@ -148,8 +158,12 @@ app/src/main/
 │       ├── ImageShareHook.java  #   图片系统分享（优先保存系统相册）
 │       ├── ShareLinkPurifyHook.java #   净化分享链接：去除分享/复制链接上的追踪参数
 │       ├── VideoDownloadHook.java #   视频下载：URL 捕获 + 圆形下载按钮 + 底部下载面板
+│       ├── LiquidGlassBottomBarHook.java # 液态玻璃底栏：主 Activity 生命周期触发安装
+│       ├── WebViewDevToolsHook.java #   网页 DevTools：WebView Chrome 远程调试
 │       └── DailyTaskHook.java   #   每日任务：3 种分享类型自动完成
-├── res/                         # 设置页布局 / 字符串 / drawable
+│   └── liquidglass/             #   液态玻璃底栏：安装器 / 调节面板 / 配置 / 沉浸式 / 毛玻璃降级
+├── java/com/qmdeve/liquidglass/ # vendored 液态玻璃渲染器（QmDeve，AGSL shader）
+├── res/                         # 设置页布局 / 字符串 / drawable / raw（AGSL shader）
 └── resources/META-INF/xposed/   # 模块声明
 ```
 
@@ -186,10 +200,21 @@ app/src/main/resources/META-INF/xposed/
    也可在小黑盒设置面板 / 独立设置页开启「记录日志」，日志自动写入文件便于离线排查
 
 ## 致谢
-- [LSPosed](https://github.com/LSPosed/LSPosed)
+
+本项目在开发和实现过程中，参考或使用了以下开源项目和库，在此表示衷心感谢：
+
+- [LSPosed](https://github.com/LSPosed/LSPosed) — Xposed 框架基础
 - [Libxposed api](https://github.com/libxposed/api) — Apache-2.0，现代 Xposed 模块 API
 - [Dexkit](https://github.com/LuckyPray/DexKit) — Apache-2.0，字节码特征分析
+- [HeyBox-LiquidGlass](https://github.com/sjtt2/HeyBox-LiquidGlass) — 液态玻璃底栏移植来源
+- [QEA0-Liquid-Glass-Android](https://github.com/QWEA0/Liquid-Glass-Android) — MIT，液态玻璃渲染器
+- [AndroidLiquidGlassView](https://github.com/QmDeve/AndroidLiquidGlassView) — MIT，QmDeve，AGSL shader 与 GPU 渲染路径
 
-### 部分功能灵感来源
-- [假装开启小黑盒通知权限](https://github.com/Xposed-Modules-Repo/com.chrxw.justenablednotification)
-- [SoulFrog](https://github.com/xmnh/SoulFrog)
+## 灵感来源
+
+本项目的部分功能设计和实现思路，受到了以下项目的启发，特别感谢：
+
+1. **[SoulFrog](https://github.com/xmnh/SoulFrog)** — **自动化分享**核心实现思路的主要灵感来源，作者 [@xmnh](https://github.com/xmnh)  
+2. **[假装开启小黑盒通知权限](https://github.com/Xposed-Modules-Repo/com.chrxw.justenablednotification)** — 提供了功能上的启发  
+
+如果涉及任何代码使用不当或版权问题，请随时联系

@@ -49,7 +49,12 @@ public class PreferenceReceiver extends BroadcastReceiver {
             App.KEY_CUSTOM_TEXT_SELECT,
             App.KEY_BLOCK_UPDATE,
             App.KEY_SYSTEM_SHARE,
-            App.KEY_LOG
+            App.KEY_LOG,
+            App.KEY_WEBVIEW_DEVTOOLS,
+            App.KEY_LIQUID_GLASS,
+            App.KEY_GLASS_IMMERSIVE,
+            App.KEY_GLASS_ADAPTIVE,
+            App.KEY_GLASS_FIT_TABS
     ));
 
     @Override

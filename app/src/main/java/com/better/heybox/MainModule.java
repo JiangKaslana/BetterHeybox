@@ -14,6 +14,7 @@ import io.github.libxposed.api.XposedModule;
 
 import com.better.heybox.hooks.AdFilterHook;
 import com.better.heybox.hooks.BottomTabHook;
+import com.better.heybox.hooks.LiquidGlassBottomBarHook;
 import com.better.heybox.hooks.DailyTaskHook;
 import com.better.heybox.hooks.GeneralHook;
 import com.better.heybox.hooks.ImageShareHook;
@@ -22,6 +23,9 @@ import com.better.heybox.hooks.SettingsEntryHook;
 import com.better.heybox.hooks.ShareLinkPurifyHook;
 import com.better.heybox.hooks.TextSelectHook;
 import com.better.heybox.hooks.VideoDownloadHook;
+import com.better.heybox.hooks.WebViewDevToolsHook;
+import com.better.heybox.liquidglass.LiquidGlassHookBridge;
+import com.better.heybox.liquidglass.LiquidGlassInstaller;
 
 /**
  * BetterHeybox 模块入口（libxposed Modern API 102）。
@@ -82,6 +86,7 @@ public class MainModule extends XposedModule {
     }
     private void installHooks(PackageReadyParam param) {
         ClassLoader cl = param.getClassLoader();
+        LiquidGlassHookBridge.setModule(this);
         Checkpoint.mark(">>> 开始安装 Hook");
         long t0 = SystemClock.elapsedRealtime();
 
@@ -89,11 +94,13 @@ public class MainModule extends XposedModule {
         installHook("广告过滤", new AdFilterHook(this)::install, cl);
         installHook("设置入口", new SettingsEntryHook(this)::install, cl);
         installHook("底部导航", new BottomTabHook(this)::install, cl);
+        installHook("液态玻璃底栏", new LiquidGlassBottomBarHook(this)::install, cl);
         installHook("推广贴", new PromotePostHook(this)::install, cl);
         installHook("文本选择", new TextSelectHook(this)::install, cl);
         installHook("图片分享", new ImageShareHook(this)::install, cl);
         installHook("分享链接净化", new ShareLinkPurifyHook(this)::install, cl);
         installHook("视频下载", new VideoDownloadHook(this)::install, cl);
+        installHook("网页 DevTools", new WebViewDevToolsHook(this)::install, cl);
         installHook("每日任务", ignored -> {
             dailyTaskHook = new DailyTaskHook(this);
             dailyTaskHook.install(ignored);

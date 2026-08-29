@@ -93,6 +93,29 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     /** 日志开关：开启后自动记录模块日志到文件 */
     public static final String KEY_LOG = "log";
 
+    /** 小黑盒内置 WebView 的 Chrome DevTools 远程调试开关 */
+    public static final String KEY_WEBVIEW_DEVTOOLS = "webview_devtools";
+
+    /** 液态玻璃底栏开关及参考项目兼容配置 */
+    public static final String KEY_LIQUID_GLASS = "liquid_glass";
+    public static final String KEY_GLASS_IMMERSIVE = "glass_immersive";
+    public static final String KEY_GLASS_ADAPTIVE = "glass_adaptive";
+    public static final String KEY_GLASS_DARK_COLOR = "glass_dark_color";
+    public static final String KEY_GLASS_DARK_ALPHA = "glass_dark_alpha";
+    public static final String KEY_GLASS_LIGHT_COLOR = "glass_light_color";
+    public static final String KEY_GLASS_LIGHT_ALPHA = "glass_light_alpha";
+    public static final String KEY_GLASS_BAR_HEIGHT = "glass_bar_height";
+    public static final String KEY_GLASS_BAR_OFFSET = "glass_bar_offset";
+
+    public static final String KEY_GLASS_FIT_TABS = "glass_fit_tabs";
+
+    /** 参考项目玻璃颜色预设/透明度/布局参数 */
+    public static final String KEY_GLASS_DARK_PRESET = "glass_dark_preset";
+    public static final String KEY_GLASS_LIGHT_PRESET = "glass_light_preset";
+
+    /** 设置页「打开网页」入口保存的 URL */
+    public static final String KEY_WEBVIEW_ENTRY_URL = "webview_entry_url";
+
     /** 运行状态检查点（Debug 构建：小黑盒进程 Hook 安装完成后写入，设置页跨进程读取查看/导出） */
     public static final String KEY_RUNTIME_STATUS = "runtime_status";
 
