@@ -4,14 +4,18 @@ import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Enumeration;
+import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -30,6 +34,8 @@ public final class RootlessEnvironment {
     public static Snapshot inspect(Context context) {
         PackageManager pm = context.getPackageManager();
         Snapshot out = new Snapshot();
+        out.sdkInt = Build.VERSION.SDK_INT;
+        out.npatchSupported = Build.VERSION.SDK_INT >= 28;
         out.npatchInstalled = packageInfo(pm, NPATCH_PACKAGE) != null;
         out.shizukuPlusInstalled = packageInfo(pm, SHIZUKU_PLUS_PACKAGE) != null;
         out.shizukuCompatInstalled = packageInfo(pm, SHIZUKU_COMPAT_PACKAGE) != null;
@@ -52,10 +58,7 @@ public final class RootlessEnvironment {
                 out.npatchPatched = true;
                 try {
                     String json = new String(Base64.decode(encoded, Base64.DEFAULT), StandardCharsets.UTF_8);
-                    JSONObject config = new JSONObject(json);
-                    out.sigBypassLevel = config.optInt("sigBypassLevel", -1);
-                    out.npatchUseManager = config.optBoolean("useManager", false);
-                    out.npatchConfigReadable = true;
+                    applyConfig(out, new JSONObject(json));
                 } catch (Throwable ignored) {
                 }
             }
@@ -69,26 +72,58 @@ public final class RootlessEnvironment {
         if (sourceDir == null || sourceDir.isEmpty()) return;
         File apk = new File(sourceDir);
         if (!apk.isFile()) return;
+
         try (ZipFile zip = new ZipFile(apk)) {
             ZipEntry config = zip.getEntry("assets/npatch/config.json");
             if (config != null) {
                 out.npatchPatched = true;
+                if (!out.npatchConfigReadable) {
+                    try (InputStream input = zip.getInputStream(config)) {
+                        String json = readUtf8(input);
+                        if (!json.isEmpty()) {
+                            applyConfig(out, new JSONObject(json));
+                        }
+                    } catch (Throwable ignored) {
+                    }
+                }
             }
+
             Enumeration<? extends ZipEntry> entries = zip.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
                 String name = entry.getName();
-                if (!entry.isDirectory()
-                        && name != null
-                        && name.startsWith("assets/npatch/modules/")) {
-                    out.hasEmbeddedModules = true;
-                    if (name.toLowerCase().contains("betterheybox")
-                            || name.toLowerCase().contains("com.better.heybox")) {
-                        out.betterHeyboxModuleVisible = true;
-                    }
+                if (entry.isDirectory() || name == null || !name.startsWith("assets/npatch/modules/")) {
+                    continue;
+                }
+                out.hasEmbeddedModules = true;
+                String lower = name.toLowerCase(Locale.ROOT);
+                if (lower.contains("betterheybox") || lower.contains("com.better.heybox")) {
+                    out.betterHeyboxModuleVisible = true;
                 }
             }
         } catch (Throwable ignored) {
+        }
+    }
+
+    private static void applyConfig(Snapshot out, JSONObject config) {
+        if (config == null) return;
+        out.sigBypassLevel = config.optInt("sigBypassLevel", out.sigBypassLevel);
+        out.npatchUseManager = config.optBoolean("useManager", out.npatchUseManager);
+        out.npatchConfigReadable = true;
+    }
+
+    private static String readUtf8(InputStream input) {
+        if (input == null) return "";
+        try {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) >= 0) {
+                if (count > 0) output.write(buffer, 0, count);
+            }
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
+        } catch (Throwable ignored) {
+            return "";
         }
     }
 
@@ -128,6 +163,8 @@ public final class RootlessEnvironment {
     }
 
     public static final class Snapshot {
+        public int sdkInt;
+        public boolean npatchSupported;
         public boolean heyboxInstalled;
         public String heyboxVersion;
         public String heyboxSourceDir;
@@ -143,13 +180,14 @@ public final class RootlessEnvironment {
         public boolean shizukuCompatInstalled;
         public boolean rootAvailable;
 
-        /** BetterHeybox README requires Extreme; stronger NPatch modes are accepted too. */
+        /** BetterHeybox requires Extreme; stronger NPatch modes are accepted too. */
         public boolean isSignatureBypassCompatible() {
             return sigBypassLevel >= 3;
         }
 
         public boolean isRootlessReady() {
-            return heyboxInstalled
+            return npatchSupported
+                    && heyboxInstalled
                     && npatchInstalled
                     && npatchPatched
                     && isSignatureBypassCompatible();
