@@ -182,6 +182,9 @@ public final class SettingsEntryHook {
                     new SwitchDef("自绘制文本选择", "选区、高亮与复制菜单全部由模块自绘，不触发系统/小黑盒选择 UI（需开启「解除复制」）", App.KEY_CUSTOM_TEXT_SELECT, false, false),
                     new SwitchDef("系统分享图片", "在图片长按菜单中打开系统分享", App.KEY_SYSTEM_SHARE, true, false),
             }),
+            new SettingsGroup("分享净化", new SwitchDef[]{
+                    new SwitchDef("净化分享链接", "复制链接 / 分享到 QQ、微信等渠道时，自动去掉 h_camp、h_session_id、h_src、new_post_share_style 等追踪参数（即时生效）", App.KEY_PURIFY_SHARE_LINK, true, false),
+            }),
             new SettingsGroup("每日任务", new SwitchDef[]{
                     new SwitchDef("自动完成每日分享任务", "自动完成 3 种分享任务：分享任意帖子 / 分享游戏详情 / 分享游戏评价（不拦截 QQ 分享）", App.KEY_DAILY_TASK_ENABLED, false, false),
                     new SwitchDef("帖子链接", "任务一：分享任意帖子", null, false, false, true, App.KEY_DAILY_TASK_PICTURE),
@@ -193,7 +196,7 @@ public final class SettingsEntryHook {
             new SettingsGroup("通用", new SwitchDef[]{
                     new SwitchDef("伪装通知权限", "让小黑盒认为通知已开启，获得签到加成（不真正申请权限）", App.KEY_FAKE_NOTIFICATION, false, false),
                     new SwitchDef("屏蔽更新", "屏蔽小黑盒更新入口", App.KEY_BLOCK_UPDATE, false, false),
-                    new SwitchDef("记录日志", "开启后自动记录模块日志到文件", App.KEY_LOG, false, false),
+                    new SwitchDef("记录日志", "开启后自动记录模块日志到文件（正式版仅记录错误级日志）", App.KEY_LOG, false, false),
                     new SwitchDef("导出日志", "把模块日志保存为文本文件（含运行状态检查点）", null, false, false, true, null, false, false, false, false, true, false),
             }),
             new SettingsGroup("配置备份", new SwitchDef[]{

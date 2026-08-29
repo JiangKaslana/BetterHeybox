@@ -4,6 +4,28 @@
 
 ## 0.4.5
 
+### 新增：净化分享链接
+
+- 新增「分享净化 → 净化分享链接」开关（默认开启，即时生效，无需重启小黑盒）：
+  复制链接 / 分享到 QQ、微信等渠道时，自动去掉小黑盒链接上的追踪参数
+  （实测携带的 h_camp、h_session_id、h_src、new_post_share_style，
+  以及 share_app_id、share_strategys、sh_from、web_sign 等，含全部 utm_*），
+  只保留内容本身：`...web/share?h_camp=link&h_session_id=xxx&link_id=abc&new_post_share_style=true`
+  → `...web/share?link_id=abc`
+- 仅处理 xiaoheihe.cn 域名链接，第三方链接原样放行；link_id / id / hkey 等功能参数
+  保留，净化后的链接照常打开；实际去除的参数会记录到模块日志，便于核对
+- 覆盖全部分享出口：复制链接、QQ/微信/微博等社交分享、系统分享统一经过的
+  分享 model `getShareUrl()`
+- 配置导入/导出补齐缺失的开关：视频下载、自动转存 MP4（随本次一并加入备份）
+
+### 变更：正式版日志精简
+
+- 正式版（Release）只保留 error 级日志：模块的 info/warn 日志不再输出到
+  LSPosed 日志与 logcat，导出的文件日志同样只含错误；Debug 构建不受影响，
+  仍全量输出（含运行状态检查点）
+- 各处直接调用 `android.util.Log` 的日志统一收敛到新出口 `Logs`，应用同一过滤策略
+- Hook 安装失败原本只写检查点（Release 下不可见），现补记 error 日志，正式版可排查
+
 ### 新增：小黑盒视频下载
 
 - **下载入口**：视频帖右上角圆形 Monet 渐变悬浮按钮，跟随视频位置自适应；
@@ -32,7 +54,7 @@
 - 同一视频在不同入口（清晰度/页面）重复建任务：按 link_id 归并去重
 - 下载进行中列表/面板点击失效：进度刷新改为原地更新，不再整列表重建
 
-## 0.4.1
+## 0.4.1(未公开)
 
 ### 新增：Debug 版运行检查点 + 导出模块日志
 

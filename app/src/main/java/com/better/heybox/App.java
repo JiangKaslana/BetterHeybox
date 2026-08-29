@@ -87,6 +87,9 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     /** 视频下载：HLS/TS 下载完成后自动转封装为 MP4（默认开，失败保留 ts） */
     public static final String KEY_VIDEO_TO_MP4 = "video_download_to_mp4";
 
+    /** 净化分享链接：复制链接 / 系统分享时去掉 sid、share_app_id 等追踪参数（默认开） */
+    public static final String KEY_PURIFY_SHARE_LINK = "purify_share_link";
+
     /** 日志开关：开启后自动记录模块日志到文件 */
     public static final String KEY_LOG = "log";
 
@@ -112,9 +115,9 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
         sApp = this;
         LogRecorder.setContext(this);
         Checkpoint.mark("模块进程启动 (pid=%d)", android.os.Process.myPid());
-        Log.i(TAG, "App.onCreate: pid=" + android.os.Process.myPid());
+        Logs.i(TAG, "App.onCreate: pid=" + android.os.Process.myPid());
         XposedServiceHelper.registerListener(this);
-        Log.i(TAG, "已注册 XposedService 监听器");
+        Logs.i(TAG, "已注册 XposedService 监听器");
     }
 
     @Override
@@ -124,7 +127,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
         LogRecorder.setEnabled(readBoolean(KEY_LOG, false));
         LogRecorder.recordEvent("XposedService 已绑定: " + describe(service));
         SharedPreferences pending = getSharedPreferences(PENDING_PREFS, MODE_PRIVATE);
-        Log.i(TAG, "XposedService 已绑定: service=" + describe(service)
+        Logs.i(TAG, "XposedService 已绑定: service=" + describe(service)
                 + ", pendingCount=" + pending.getAll().size());
         PreferenceReceiver.tryFlush(this, pending);
         notifyServiceBound();
@@ -133,7 +136,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     @Override
     public void onServiceDied(XposedService service) {
         Checkpoint.mark("XposedService 断开: %s", describe(service));
-        Log.w(TAG, "XposedService 已断开: service=" + describe(service)
+        Logs.w(TAG, "XposedService 已断开: service=" + describe(service)
                 + ", current=" + describe(sService));
         sService = null;
     }
@@ -142,19 +145,19 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     public static SharedPreferences getPrefs() {
         XposedService service = sService;
         if (service == null) {
-            Log.w(TAG, "获取 RemotePreferences 失败: XposedService 未绑定");
+            Logs.w(TAG, "获取 RemotePreferences 失败: XposedService 未绑定");
             return null;
         }
         try {
             SharedPreferences prefs = service.getRemotePreferences(PREFS_GROUP);
             if (prefs == null) {
-                Log.e(TAG, "获取 RemotePreferences 失败: service 返回 null, group=" + PREFS_GROUP);
+                Logs.e(TAG, "获取 RemotePreferences 失败: service 返回 null, group=" + PREFS_GROUP);
             } else {
-                Log.i(TAG, "获取 RemotePreferences 成功: group=" + PREFS_GROUP);
+                Logs.i(TAG, "获取 RemotePreferences 成功: group=" + PREFS_GROUP);
             }
             return prefs;
         } catch (Throwable t) {
-            Log.e(TAG, "获取 RemotePreferences 异常: group=" + PREFS_GROUP, t);
+            Logs.e(TAG, "获取 RemotePreferences 异常: group=" + PREFS_GROUP, t);
             return null;
         }
     }

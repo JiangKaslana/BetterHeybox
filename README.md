@@ -41,6 +41,12 @@
 - **图片系统分享**：图片查看器中长按图片，在原有分享面板追加「系统分享」动作，
   下载当前图片后**优先保存到系统相册**（可被相册真正查看、可被任意 App 分享），
   自动识别 jpg/png/gif/webp/bmp 真实格式并修正 MIME；可通过「系统分享图片」开关关闭
+- **净化分享链接**：复制链接 / 分享到 QQ、微信等渠道时，自动去掉小黑盒链接上的
+  h_camp、h_session_id、h_src、new_post_share_style 等追踪参数
+  （如 `...web/share?h_camp=link&h_session_id=xxx&link_id=abc&new_post_share_style=true`
+  净化为 `...web/share?link_id=abc`；仅处理小黑盒域名，保留 link_id / id / hkey
+  等功能参数，链接照常打开）；默认开启，可通过「净化分享链接」开关关闭，
+  去除内容会记录到模块日志
 
 ### 视频下载
 
@@ -127,6 +133,7 @@ app/src/main/
 │       ├── PromotePostHook.java #   推广贴屏蔽
 │       ├── TextSelectHook.java  #   解除复制 / 标准文本选择 / 跨行选择
 │       ├── ImageShareHook.java  #   图片系统分享（优先保存系统相册）
+│       ├── ShareLinkPurifyHook.java #   净化分享链接：去除分享/复制链接上的追踪参数
 │       ├── VideoDownloadHook.java #   视频下载：URL 捕获 + 圆形下载按钮 + 底部下载面板
 │       └── DailyTaskHook.java   #   每日任务：3 种分享类型自动完成
 ├── res/                         # 设置页布局 / 字符串 / drawable

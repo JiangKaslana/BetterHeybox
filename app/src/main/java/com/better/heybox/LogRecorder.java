@@ -67,12 +67,18 @@ public final class LogRecorder {
         if (!sEnabled || msg == null) {
             return;
         }
+        if (!BuildFlags.DEBUG && level < Log.ERROR) {
+            return; // 正式版只保留 error 级日志
+        }
         recordLocked(level, tag, msg, null);
     }
 
     public static void record(int level, String tag, String msg, Throwable tr) {
         if (!sEnabled) {
             return;
+        }
+        if (!BuildFlags.DEBUG && level < Log.ERROR) {
+            return; // 正式版只保留 error 级日志
         }
         recordLocked(level, tag, msg, tr);
     }

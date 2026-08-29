@@ -19,6 +19,7 @@ import com.better.heybox.hooks.GeneralHook;
 import com.better.heybox.hooks.ImageShareHook;
 import com.better.heybox.hooks.PromotePostHook;
 import com.better.heybox.hooks.SettingsEntryHook;
+import com.better.heybox.hooks.ShareLinkPurifyHook;
 import com.better.heybox.hooks.TextSelectHook;
 import com.better.heybox.hooks.VideoDownloadHook;
 
@@ -91,6 +92,7 @@ public class MainModule extends XposedModule {
         installHook("推广贴", new PromotePostHook(this)::install, cl);
         installHook("文本选择", new TextSelectHook(this)::install, cl);
         installHook("图片分享", new ImageShareHook(this)::install, cl);
+        installHook("分享链接净化", new ShareLinkPurifyHook(this)::install, cl);
         installHook("视频下载", new VideoDownloadHook(this)::install, cl);
         installHook("每日任务", ignored -> {
             dailyTaskHook = new DailyTaskHook(this);
@@ -112,6 +114,8 @@ public class MainModule extends XposedModule {
         } catch (Throwable t) {
             Checkpoint.mark("✘ %s Hook 安装失败: %s (%d ms)",
                     label, t, SystemClock.elapsedRealtime() - t0);
+            // Release 构建下 Checkpoint 是空操作，必须单独留 error 日志供排查
+            logd(Log.ERROR, TAG, "✘ " + label + " Hook 安装失败", t);
         }
     }
     private void stashRuntimeStatus() {
@@ -179,6 +183,9 @@ public class MainModule extends XposedModule {
     }
 
     public void logd(int level, String tag, String msg) {
+        if (!BuildFlags.DEBUG && level < Log.ERROR) {
+            return; // 正式版只保留 error 级日志
+        }
         try {
             boolean logEnabled = isEnabled(App.KEY_LOG, false);
             LogRecorder.setEnabled(logEnabled);
@@ -190,6 +197,9 @@ public class MainModule extends XposedModule {
         log(level, tag, msg);
     }
     public void logd(int level, String tag, String msg, Throwable tr) {
+        if (!BuildFlags.DEBUG && level < Log.ERROR) {
+            return; // 正式版只保留 error 级日志
+        }
         try {
             boolean logEnabled = isEnabled(App.KEY_LOG, false);
             LogRecorder.setEnabled(logEnabled);

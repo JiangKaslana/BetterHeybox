@@ -25,8 +25,11 @@ public final class ConfigBackup {
             App.KEY_HIDE_ADD,
             App.KEY_COPY_POST,
             App.KEY_CUSTOM_TEXT_SELECT,
-            App.KEY_BLOCK_UPDATE,
             App.KEY_SYSTEM_SHARE,
+            App.KEY_VIDEO_DOWNLOAD,
+            App.KEY_VIDEO_TO_MP4,
+            App.KEY_PURIFY_SHARE_LINK,
+            App.KEY_BLOCK_UPDATE,
             App.KEY_DAILY_TASK_ENABLED,
             App.KEY_FAKE_NOTIFICATION,
             App.KEY_LOG,
@@ -77,7 +80,7 @@ public final class ConfigBackup {
             root.put(KEY_STRINGS, strings);
             return root.toString(2);
         } catch (JSONException e) {
-            Log.e(TAG, "导出配置失败: " + e);
+            Logs.e(TAG, "导出配置失败: " + e);
             return null;
         }
     }
@@ -86,7 +89,7 @@ public final class ConfigBackup {
             JSONObject root = new JSONObject(json);
             String format = root.optString(KEY_FORMAT);
             if (!FORMAT.equals(format)) {
-                Log.w(TAG, "导入拒绝: format 不匹配, actual=" + format);
+                Logs.w(TAG, "导入拒绝: format 不匹配, actual=" + format);
                 return null;
             }
             int count = 0;
@@ -112,10 +115,10 @@ public final class ConfigBackup {
                     }
                 }
             }
-            Log.i(TAG, "导入完成: applied=" + count + ", restartRequired=" + restartRequired);
+            Logs.i(TAG, "导入完成: applied=" + count + ", restartRequired=" + restartRequired);
             return new ApplyResult(count, restartRequired);
         } catch (JSONException e) {
-            Log.e(TAG, "导入配置解析失败: " + e);
+            Logs.e(TAG, "导入配置解析失败: " + e);
             return null;
         }
     }

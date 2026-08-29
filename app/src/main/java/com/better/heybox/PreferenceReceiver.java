@@ -55,21 +55,21 @@ public class PreferenceReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (intent == null) {
-            Log.w("BetterHeybox", "广播接收: intent=null");
+            Logs.w("BetterHeybox", "广播接收: intent=null");
             return;
         }
         String action = intent.getAction();
         String key = intent.getStringExtra(EXTRA_KEY);
         boolean value = intent.getBooleanExtra(EXTRA_VALUE, false);
         Checkpoint.mark("广播接收: action=%s key=%s value=%s", action, key, value);
-        Log.i("BetterHeybox", "广播接收: action=" + action + ", key=" + key
+        Logs.i("BetterHeybox", "广播接收: action=" + action + ", key=" + key
                 + ", value=" + value + ", pid=" + android.os.Process.myPid());
         if (!ACTION_SET_BOOLEAN.equals(action)) {
-            Log.w("BetterHeybox", "广播忽略: action 不匹配, action=" + action);
+            Logs.w("BetterHeybox", "广播忽略: action 不匹配, action=" + action);
             return;
         }
         if (!isAllowedKey(key)) {
-            Log.w("BetterHeybox", "广播拒绝: key 不允许, key=" + key);
+            Logs.w("BetterHeybox", "广播拒绝: key 不允许, key=" + key);
             return;
         }
 
@@ -82,7 +82,7 @@ public class PreferenceReceiver extends BroadcastReceiver {
                     SharedPreferences pending = context.getSharedPreferences(PENDING_PREFS,
                             Context.MODE_PRIVATE);
                     pending.edit().putBoolean(key, value).commit();
-                    Log.i("BetterHeybox", "广播已写入待提交缓存: key=" + key + ", value=" + value
+                    Logs.i("BetterHeybox", "广播已写入待提交缓存: key=" + key + ", value=" + value
                             + ", pendingCount=" + pending.getAll().size());
                     LogRecorder.recordEvent("开关变更已写入待提交缓存: key=" + key + ", value=" + value);
 
@@ -98,7 +98,7 @@ public class PreferenceReceiver extends BroadcastReceiver {
                         service = App.getService();
                     }
                     if (service == null) {
-                        Log.w("BetterHeybox", "等待框架服务绑定超时，保留待提交缓存: key=" + key
+                        Logs.w("BetterHeybox", "等待框架服务绑定超时，保留待提交缓存: key=" + key
                                 + "（服务绑定后会自动补交）");
                     }
                     PreferenceReceiver.tryFlush(context, pending);
@@ -111,22 +111,22 @@ public class PreferenceReceiver extends BroadcastReceiver {
 
     public static void tryFlush(Context context, SharedPreferences pending) {
         if (pending == null) {
-            Log.e("BetterHeybox", "远程提交跳过: pending=null");
+            Logs.e("BetterHeybox", "远程提交跳过: pending=null");
             return;
         }
         Map<String, ?> values = pending.getAll();
-        Log.i("BetterHeybox", "远程提交开始: pendingCount=" + values.size()
+        Logs.i("BetterHeybox", "远程提交开始: pendingCount=" + values.size()
                 + ", pid=" + android.os.Process.myPid());
         try {
             SharedPreferences remote = App.getPrefs();
             if (remote == null) {
-                Log.w("BetterHeybox", "远程提交等待: RemotePreferences 不可用，保留待提交缓存");
+                Logs.w("BetterHeybox", "远程提交等待: RemotePreferences 不可用，保留待提交缓存");
                 return;
             }
-            Log.i("BetterHeybox", "远程偏好已获取，开始构造 Editor: group=" + App.PREFS_GROUP);
+            Logs.i("BetterHeybox", "远程偏好已获取，开始构造 Editor: group=" + App.PREFS_GROUP);
             SharedPreferences.Editor remoteEditor = remote.edit();
             if (remoteEditor == null) {
-                Log.e("BetterHeybox", "远程提交失败: RemotePreferences.edit 返回 null");
+                Logs.e("BetterHeybox", "远程提交失败: RemotePreferences.edit 返回 null");
                 return;
             }
             int acceptedCount = 0;
@@ -135,24 +135,24 @@ public class PreferenceReceiver extends BroadcastReceiver {
                 if (value instanceof Boolean && isAllowedKey(key)) {
                     remoteEditor.putBoolean(key, (Boolean) value);
                     acceptedCount++;
-                    Log.i("BetterHeybox", "远程提交加入变更: key=" + key + ", value=" + value);
+                    Logs.i("BetterHeybox", "远程提交加入变更: key=" + key + ", value=" + value);
                 } else {
-                    Log.w("BetterHeybox", "远程提交跳过无效缓存: key=" + key
+                    Logs.w("BetterHeybox", "远程提交跳过无效缓存: key=" + key
                             + ", valueType=" + (value == null ? "null" : value.getClass().getName()));
                 }
             }
             boolean committed = remoteEditor.commit();
-            Log.i("BetterHeybox", "远程提交 commit 已返回: success=" + committed
+            Logs.i("BetterHeybox", "远程提交 commit 已返回: success=" + committed
                     + ", acceptedCount=" + acceptedCount);
             LogRecorder.recordEvent("远程提交完成: success=" + committed + ", count=" + acceptedCount);
             if (committed) {
                 pending.edit().clear().commit();
-                Log.i("BetterHeybox", "待提交缓存已清理: pendingCount=" + pending.getAll().size());
+                Logs.i("BetterHeybox", "待提交缓存已清理: pendingCount=" + pending.getAll().size());
             } else {
-                Log.w("BetterHeybox", "远程提交未成功，保留待提交缓存");
+                Logs.w("BetterHeybox", "远程提交未成功，保留待提交缓存");
             }
         } catch (Throwable t) {
-            Log.e("BetterHeybox", "远程提交异常，保留待提交缓存", t);
+            Logs.e("BetterHeybox", "远程提交异常，保留待提交缓存", t);
         }
     }
 

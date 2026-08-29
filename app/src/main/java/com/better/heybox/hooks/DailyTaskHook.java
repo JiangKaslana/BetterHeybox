@@ -21,6 +21,7 @@ import java.util.Locale;
 
 import com.better.heybox.App;
 import com.better.heybox.HeyboxPrefs;
+import com.better.heybox.Logs;
 import com.better.heybox.MainModule;
 
 /**
@@ -73,7 +74,7 @@ public final class DailyTaskHook {
         this.targetCl = cl;
         // 强制输出到 logcat（不依赖「记录日志」开关），确认主进程是否执行了本方法
         try {
-            Log.i(module.TAG, "DailyTaskHook.install ENTER pid=" + android.os.Process.myPid());
+            Logs.i(module.TAG, "DailyTaskHook.install ENTER pid=" + android.os.Process.myPid());
         } catch (Throwable ignored) {
         }
         hookShareUtils(cl);
@@ -463,13 +464,13 @@ public final class DailyTaskHook {
             Method setter = titleBar.getMethod(setterName, View.OnClickListener.class);
             // 强制输出，确认 setter hook 是否真的挂载
             try {
-                Log.i(module.TAG, "TitleBar " + setterName + " hooking pid="
+                Logs.i(module.TAG, "TitleBar " + setterName + " hooking pid="
                         + android.os.Process.myPid());
             } catch (Throwable ignored) {
             }
             module.hook(setter).intercept(chain -> {
                 try {
-                    Log.i(module.TAG, "TitleBar " + setterName + " CALLED autoActive="
+                    Logs.i(module.TAG, "TitleBar " + setterName + " CALLED autoActive="
                             + autoActive + " step=" + currentStep
                             + " pid=" + android.os.Process.myPid());
                 } catch (Throwable ignored) {
