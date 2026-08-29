@@ -45,13 +45,14 @@ jobs:
           ls -lh apks
 
       - name: Analyze APKs and build report
+        id: analyze
         env:
           TZ: Asia/Shanghai
         run: |
           AAPT2="$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n 1)"
           echo "Using aapt2: $AAPT2"
           analyze_apk() {
-            local apk="$1"
+            local apk="$1" channel="${2:-}"
             local badging size mtime
             badging="$("$AAPT2" dump badging "$apk")"
 
@@ -93,6 +94,11 @@ jobs:
               perm_block="$(printf '%s\n' "$perms" | sed 's/^/    /')"
             fi
 
+            if [ -n "$channel" ]; then
+              echo "${channel}_version=${version_name}" >> "$GITHUB_OUTPUT"
+              echo "${channel}_code=${version_code}" >> "$GITHUB_OUTPUT"
+            fi
+
             cat <<EOF
           ### $(basename "$apk")
 
@@ -119,19 +125,20 @@ jobs:
           {
             echo "## $(date '+%Y-%m-%d %H:%M %Z')"
             echo
-            analyze_apk apks/heybox-release.apk
+            analyze_apk apks/heybox-release.apk release
             echo
-            analyze_apk apks/heybox-beta.apk
+            analyze_apk apks/heybox-beta.apk beta
             echo
             echo "---"
             echo
           } | tee new-section.md >> "$GITHUB_STEP_SUMMARY"
+          echo "date=$(date '+%Y%m%d')" >> "$GITHUB_OUTPUT"
           MAX_LINES=2000
           mkdir -p docs
           {
             echo "# 小黑盒官方 APK 版本监控"
             echo
-            echo "每晚北京时间 20:00 自动下载并解析官方渠道 APK。"
+            echo "每晚北京时间 20:00 自动下载并解析官方渠道 APK，APK 存档见 [Releases/heybox-apk](https://github.com/${GITHUB_REPOSITORY}/releases/tag/heybox-apk)。"
             echo
             if [ -f docs/heybox-version-report.md ]; then
               cat new-section.md
@@ -154,3 +161,25 @@ jobs:
           git add docs/heybox-version-report.md
           git commit -m "chore: 更新小黑盒官方 APK 版本监控报告 [skip ci]"
           git push
+
+      - name: Upload APKs to archive release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE_TAG: heybox-apk
+        run: |
+          mkdir -p dist
+          mv apks/heybox-release.apk "dist/Release-${{ steps.analyze.outputs.release_version }}(${{ steps.analyze.outputs.release_code }})-${{ steps.analyze.outputs.date }}.apk"
+          mv apks/heybox-beta.apk "dist/Beta-${{ steps.analyze.outputs.beta_version }}(${{ steps.analyze.outputs.beta_code }})-${{ steps.analyze.outputs.date }}.apk"
+
+          if ! gh release view "$ARCHIVE_TAG" >/dev/null 2>&1; then
+            gh release create "$ARCHIVE_TAG" --title "小黑盒官方 APK 存档" \
+              --notes "定时任务每晚下载的小黑盒官方渠道 APK 存档，文件名格式：渠道-版本名称(版本号)-yyyymmdd.apk"
+          fi
+          gh release upload "$ARCHIVE_TAG" dist/*.apk --clobber
+
+          # 只保留最近 30 个附件（约 15 天），避免存档无限增长
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$ARCHIVE_TAG" \
+            --jq '.assets | sort_by(.created_at) | reverse | .[30:][].id' \
+          | while read -r asset_id; do
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            done
