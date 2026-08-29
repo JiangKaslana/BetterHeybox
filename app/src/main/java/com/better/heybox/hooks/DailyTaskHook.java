@@ -449,7 +449,7 @@ public final class DailyTaskHook {
         try {
             Class<?> titleBar = Class.forName("com.max.hbcommon.component.TitleBar", false, cl);
             hookTitleBarSetter(cl, titleBar, "setActionIconOnClickListener",
-                    "iv_appbar_action_button", STEP_PICTURE, STEP_NORMAL);
+                    "iv_appbar_action_button", STEP_PICTURE);
             hookTitleBarSetter(cl, titleBar, "setActionMoreIconOnClickListener",
                     "iv_appbar_action_button_more", STEP_NORMAL, STEP_CHANNEL);
             module.logd(Log.INFO, module.TAG, "✔ 分享按钮 Hook 已安装（TitleBar setter）");
@@ -506,11 +506,16 @@ public final class DailyTaskHook {
                         // 延迟执行：等页面 onResume 完成、按钮可见后触发 onClick
                         final Object titleBarObj = self;
                         final Object listener = chain.getArg(0);
+                        final int scheduledStep = currentStep;
                         mainHandler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
                                 try {
                                     if (!autoActive || listener == null) {
+                                        return;
+                                    }
+                                    // 步骤可能已切换/完成，触发时重新校验仍是调度时的步骤
+                                    if (currentStep != scheduledStep) {
                                         return;
                                     }
                                     // 同一步骤只触发一次（页面可能多次设置监听器）
