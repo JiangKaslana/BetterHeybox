@@ -67,4 +67,9 @@ dependencies {
     compileOnly(libs.libxposed.api)
     implementation(libs.libxposed.service)
     implementation(libs.dexkit)
+
+    // Rootless manager privilege bridge. Shizuku+ remains optional at runtime;
+    // its Compat Hub exposes the standard Shizuku API package to this client.
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 }
