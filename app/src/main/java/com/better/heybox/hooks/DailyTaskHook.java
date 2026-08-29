@@ -63,6 +63,19 @@ public final class DailyTaskHook {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    /** 自动化启动时缓存的上下文（applicationContext），供拿不到 Context 的回调路径（微信/微博）兜底 */
+    private volatile Context autoContext;
+
+    /**
+     * 各 TitleBar 实例当前 action 图标的资源名（setActionIcon 时记录）。
+     * 同一个 {@code setActionIconOnClickListener} 在不同页面语义不同：帖子页（含评论页）的
+     * action 图标是右上角"⋯"（{@code common_more}，点击直接弹分享面板），而游戏详情页
+     * （ChannelsDetailActivity）是消息入口（{@code common_notice}，点击跳消息中心）。
+     * 自动化点它之前先看图标，防止误触进消息页。
+     */
+    private final java.util.Map<Object, String> actionIcons =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<Object, String>());
+
     /** 单步看门狗：超时未完成则跳过（避免卡死） */
     private static final long STEP_TIMEOUT_MS = 25000L;
 
@@ -440,6 +453,7 @@ public final class DailyTaskHook {
             return;
         }
         autoActive = true;
+        autoContext = activity.getApplicationContext();
         currentStep = STEP_PICTURE;
         triggeredStep = -1;
         module.logd(Log.INFO, module.TAG, "每日任务启动（3 种分享类型：图片帖→普通帖→频道）");
@@ -448,8 +462,9 @@ public final class DailyTaskHook {
     private void hookSharePages(ClassLoader cl) {
         try {
             Class<?> titleBar = Class.forName("com.max.hbcommon.component.TitleBar", false, cl);
+            hookActionIconSetter(cl, titleBar);
             hookTitleBarSetter(cl, titleBar, "setActionIconOnClickListener",
-                    "iv_appbar_action_button", STEP_PICTURE);
+                    "iv_appbar_action_button", STEP_PICTURE, STEP_NORMAL, STEP_CHANNEL);
             hookTitleBarSetter(cl, titleBar, "setActionMoreIconOnClickListener",
                     "iv_appbar_action_button_more", STEP_NORMAL, STEP_CHANNEL);
             module.logd(Log.INFO, module.TAG, "✔ 分享按钮 Hook 已安装（TitleBar setter）");
@@ -457,12 +472,52 @@ public final class DailyTaskHook {
             module.logd(Log.ERROR, module.TAG, "✘ 分享按钮 Hook 失败", t);
         }
     }
+    private void hookActionIconSetter(ClassLoader cl, Class<?> titleBar) {
+        try {
+            Method intSetter = titleBar.getMethod("setActionIcon", int.class);
+            module.hook(intSetter).intercept(chain -> {
+                try {
+                    Object self = chain.getThisObject();
+                    int resId = (Integer) chain.getArg(0);
+                    if (self instanceof View && resId != 0) {
+                        String name = ((View) self).getResources()
+                                .getResourceEntryName(resId);
+                        actionIcons.put(self, name);
+                        if (autoActive) {
+                            module.logd(Log.INFO, module.TAG,
+                                    "每日任务：setActionIcon 记录 " + name);
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+                return chain.proceed();
+            });
+            for (Method m : titleBar.getDeclaredMethods()) {
+                Class<?>[] pts = m.getParameterTypes();
+                if ("setActionIcon".equals(m.getName()) && pts.length == 1
+                        && pts[0] != int.class) {
+                    module.hook(m).intercept(chain -> {
+                        try {
+                            Object self = chain.getThisObject();
+                            if (self instanceof View) {
+                                actionIcons.put(self, "");
+                            }
+                        } catch (Throwable ignored) {
+                        }
+                        return chain.proceed();
+                    });
+                    break;
+                }
+            }
+        } catch (Throwable t) {
+            module.logd(Log.WARN, module.TAG, "✘ setActionIcon 记录 Hook 失败: " + t);
+        }
+    }
     private void hookTitleBarSetter(final ClassLoader cl, final Class<?> titleBar,
                                     final String setterName, final String viewName,
                                     final int... allowedSteps) {
         try {
             Method setter = titleBar.getMethod(setterName, View.OnClickListener.class);
-            // 强制输出，确认 setter hook 是否真的挂载
             try {
                 Logs.i(module.TAG, "TitleBar " + setterName + " hooking pid="
                         + android.os.Process.myPid());
@@ -489,6 +544,13 @@ public final class DailyTaskHook {
                 if (!allowed) {
                     return result;
                 }
+                Object selfObj = chain.getThisObject();
+                if ("setActionIconOnClickListener".equals(setterName)
+                        && isMessageIconPage(selfObj)) {
+                    module.logd(Log.INFO, module.TAG,
+                            "每日任务：该页 action 图标是消息入口，跳过不点");
+                    return result;
+                }
                 try {
                     Object self = chain.getThisObject();
                     if (self == null) {
@@ -503,7 +565,6 @@ public final class DailyTaskHook {
                     }
                     if (ctx instanceof Activity) {
                         final Activity act = (Activity) ctx;
-                        // 延迟执行：等页面 onResume 完成、按钮可见后触发 onClick
                         final Object titleBarObj = self;
                         final Object listener = chain.getArg(0);
                         final int scheduledStep = currentStep;
@@ -514,16 +575,16 @@ public final class DailyTaskHook {
                                     if (!autoActive || listener == null) {
                                         return;
                                     }
-                                    // 步骤可能已切换/完成，触发时重新校验仍是调度时的步骤
+
                                     if (currentStep != scheduledStep) {
                                         return;
                                     }
-                                    // 同一步骤只触发一次（页面可能多次设置监听器）
+
                                     if (triggeredStep == currentStep) {
                                         return;
                                     }
                                     triggeredStep = currentStep;
-                                    // 找到按钮并执行 onClick
+
                                     int btnId = act.getResources().getIdentifier(
                                             viewName, "id", MainModule.TARGET_PKG);
                                     View btn = btnId == 0 ? null
@@ -531,11 +592,11 @@ public final class DailyTaskHook {
                                     View.OnClickListener l = (View.OnClickListener) listener;
                                     module.logd(Log.INFO, module.TAG, "每日任务：自动触发 "
                                             + viewName + " 分享 (步骤 " + (currentStep + 1)
-                                            + "/" + STEP_COUNT + ")");
+                                            + "/" + STEP_COUNT + ") 页面="
+                                            + act.getClass().getSimpleName());
                                     if (btn != null) {
                                         l.onClick(btn);
                                     } else {
-                                        // 按钮找不到时尝试直接从 TitleBar 取按钮
                                         try {
                                             Method getView = titleBar.getMethod(
                                                     "getAppbarActionButtonView");
@@ -565,6 +626,25 @@ public final class DailyTaskHook {
             module.logd(Log.WARN, module.TAG, "✘ TitleBar " + setterName + " Hook 失败", t);
         }
     }
+    private boolean isMessageIconPage(Object titleBar) {
+        Activity act = activityOf(titleBar instanceof View ? (View) titleBar : null);
+        if (act != null && "com.max.xiaoheihe.module.bbs.ChannelsDetailActivity"
+                .equals(act.getClass().getName())) {
+            return true;
+        }
+        return titleBar != null && "common_notice".equals(actionIcons.get(titleBar));
+    }
+
+    private static Activity activityOf(View v) {
+        Context c = v != null ? v.getContext() : null;
+        while (c instanceof android.content.ContextWrapper) {
+            if (c instanceof Activity) {
+                return (Activity) c;
+            }
+            c = ((android.content.ContextWrapper) c).getBaseContext();
+        }
+        return c instanceof Activity ? (Activity) c : null;
+    }
 
     private void onStepCompleted(Context context) {
         if (!autoActive) {
@@ -582,9 +662,10 @@ public final class DailyTaskHook {
         int next = currentStep + 1;
         if (next < STEP_COUNT) {
             currentStep = next;
-            triggeredStep = -1; // 下一步允许重新触发
-            if (context != null) {
-                openStep(context, next);
+            triggeredStep = -1;
+            Context ctx = context != null ? context : autoContext;
+            if (ctx != null) {
+                openStep(ctx, next);
             }
         } else {
             finishDailyTask(context);
@@ -671,9 +752,11 @@ public final class DailyTaskHook {
         } catch (Throwable ignored) {
         }
         module.logd(Log.INFO, module.TAG, "每日任务：3 种分享类型全部完成，已记录今日状态");
-        if (context != null) {
+        // 微信/微博路径传入的 context 为 null，用缓存上下文兜底弹 Toast
+        Context ctx = context != null ? context : autoContext;
+        if (ctx != null) {
             try {
-                Toast.makeText(context.getApplicationContext(),
+                Toast.makeText(ctx.getApplicationContext(),
                         "每日分享任务已完成", Toast.LENGTH_SHORT).show();
             } catch (Throwable ignored) {
             }
