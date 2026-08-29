@@ -60,10 +60,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     public static final String KEY_LOG = "log";
     public static final String KEY_RUNTIME_STATUS = "runtime_status";
 
-    /** Standard framework service. Takes precedence when available. */
     private static volatile XposedService sService;
-
-    /** NPatch Local fallback used only by the standalone settings process. */
     private static volatile NPatchRemoteClient sNPatchClient;
     private static volatile boolean sNPatchConnecting;
     private static volatile String sNPatchError;
@@ -90,6 +87,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     @Override
     public void onServiceBind(XposedService service) {
         sService = service;
+        sNPatchError = null;
         Checkpoint.mark("XposedService 已绑定: %s", describe(service));
         LogRecorder.setEnabled(readBoolean(KEY_LOG, false));
         LogRecorder.recordEvent("XposedService 已绑定: " + describe(service));
@@ -123,8 +121,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
             try {
                 return npatch.getRemotePreferences(PREFS_GROUP);
             } catch (Throwable t) {
-                sNPatchError = t.getClass().getSimpleName() + ": " + t.getMessage();
-                Logs.e(TAG, "NPatch RemotePreferences 获取异常", t);
+                markNPatchDisconnected(t);
             }
         }
 
@@ -162,12 +159,15 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
         SharedPreferences remote = getPrefs();
         if (remote != null) {
             try {
-                remote.edit()
+                boolean committed = remote.edit()
                         .putBoolean(key, value)
                         .putLong(timestampKey(key), timestamp)
-                        .apply();
-                LogRecorder.recordEvent("开关已写入 RemotePreferences: key=" + key + ", value=" + value);
-                return;
+                        .commit();
+                if (committed) {
+                    LogRecorder.recordEvent("开关已写入 RemotePreferences: key=" + key + ", value=" + value);
+                    return;
+                }
+                Logs.w(TAG, "RemotePreferences commit=false，转入待提交缓存: " + key);
             } catch (Throwable t) {
                 Logs.e(TAG, "RemotePreferences 写入失败，转入待提交缓存: " + key, t);
             }
@@ -180,26 +180,20 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
         SharedPreferences remote = getPrefs();
         if (remote != null) {
             try {
-                remote.edit()
+                boolean committed = remote.edit()
                         .putString(key, value)
                         .putLong(timestampKey(key), timestamp)
-                        .apply();
-                LogRecorder.recordEvent("字符串已写入 RemotePreferences: key=" + key);
-                return;
+                        .commit();
+                if (committed) {
+                    LogRecorder.recordEvent("字符串已写入 RemotePreferences: key=" + key);
+                    return;
+                }
+                Logs.w(TAG, "RemotePreferences 字符串 commit=false，转入待提交缓存: " + key);
             } catch (Throwable t) {
                 Logs.e(TAG, "RemotePreferences 字符串写入失败，转入待提交缓存: " + key, t);
             }
         }
-        App app = sApp;
-        if (app != null) {
-            SharedPreferences pending = app.getSharedPreferences(PENDING_PREFS, MODE_PRIVATE);
-            pending.edit()
-                    .putString(key, value)
-                    .putLong(timestampKey(key), timestamp)
-                    .commit();
-            tryConnectNPatchRemote();
-            PreferenceReceiver.tryFlush(app, pending);
-        }
+        queueString(key, value, timestamp);
     }
 
     private static void queueBoolean(String key, boolean value, long timestamp) {
@@ -211,6 +205,19 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
                 .putLong(timestampKey(key), timestamp)
                 .commit();
         LogRecorder.recordEvent("服务未连接，开关写入待提交缓存: key=" + key + ", value=" + value);
+        tryConnectNPatchRemote();
+        PreferenceReceiver.tryFlush(app, pending);
+    }
+
+    private static void queueString(String key, String value, long timestamp) {
+        App app = sApp;
+        if (app == null) return;
+        SharedPreferences pending = app.getSharedPreferences(PENDING_PREFS, MODE_PRIVATE);
+        pending.edit()
+                .putString(key, value)
+                .putLong(timestampKey(key), timestamp)
+                .commit();
+        LogRecorder.recordEvent("服务未连接，字符串写入待提交缓存: key=" + key);
         tryConnectNPatchRemote();
         PreferenceReceiver.tryFlush(app, pending);
     }
@@ -264,10 +271,18 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
                 });
     }
 
-    /**
-     * Query API 102 for the actual target process currently hooked by this module.
-     * Call from a background thread because this performs Binder IPC.
-     */
+    private static void markNPatchDisconnected(Throwable error) {
+        Throwable cause = error != null && error.getCause() != null ? error.getCause() : error;
+        sNPatchError = cause == null
+                ? "NPatch Remote disconnected"
+                : cause.getClass().getSimpleName() + ": " + String.valueOf(cause.getMessage());
+        sNPatchClient = null;
+        Logs.w(TAG, "NPatch Remote API 失效: " + sNPatchError);
+        tryConnectNPatchRemote();
+        notifyServiceBound();
+    }
+
+    /** Query API 102 for the actual target process currently hooked by this module. */
     public static HookRuntimeStatus inspectHookRuntime(String targetPackage) {
         XposedService standard = sService;
         if (standard != null) {
@@ -316,6 +331,7 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
                 return HookRuntimeStatus.connected("NPatch Remote", framework, api,
                         "目标未运行，或当前进程未被模块 Hook");
             } catch (Throwable t) {
+                markNPatchDisconnected(t);
                 return HookRuntimeStatus.error("NPatch Remote", t);
             }
         }
@@ -330,13 +346,13 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
 
     private static String rawStateLabel(int state) {
         switch (state) {
-            case HookedProcess.TARGET_STATE_UP_TO_DATE:
+            case 0:
                 return "UP_TO_DATE";
-            case HookedProcess.TARGET_STATE_STALE:
+            case 1:
                 return "STALE";
-            case HookedProcess.TARGET_STATE_RELOADING:
+            case 2:
                 return "RELOADING";
-            case HookedProcess.TARGET_STATE_FAILED:
+            case 3:
                 return "FAILED";
             default:
                 return "UNKNOWN(" + state + ")";
