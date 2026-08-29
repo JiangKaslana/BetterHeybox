@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
@@ -25,6 +27,7 @@ public final class RootlessEnvironment {
     public static final String HEYBOX_PACKAGE = "com.max.xiaoheihe";
     public static final String NPATCH_PACKAGE = "top.nkbe.npatch";
     public static final String NPATCH_REMOTE_AUTHORITY = "top.nkbe.npatch.remote";
+    public static final String NPATCH_CONFIG_AUTHORITY = "top.nkbe.npatch.manager.provider.config";
     public static final String SHIZUKU_PLUS_PACKAGE = "af.shizuku.plus.api";
     public static final String SHIZUKU_COMPAT_PACKAGE = "moe.shizuku.privileged.api";
 
@@ -40,6 +43,9 @@ public final class RootlessEnvironment {
         out.shizukuPlusInstalled = packageInfo(pm, SHIZUKU_PLUS_PACKAGE) != null;
         out.shizukuCompatInstalled = packageInfo(pm, SHIZUKU_COMPAT_PACKAGE) != null;
         out.npatchRemoteProvider = resolveProvider(pm, NPATCH_REMOTE_AUTHORITY);
+        out.npatchConfigProvider = resolveProvider(pm, NPATCH_CONFIG_AUTHORITY);
+        out.npatchModuleConfigured = out.npatchConfigProvider
+                && isModuleConfigured(context, HEYBOX_PACKAGE, context.getPackageName());
         out.rootAvailable = PrivilegedOps.hasSuBinary();
 
         PackageInfo heybox = packageInfo(pm, HEYBOX_PACKAGE);
@@ -66,6 +72,39 @@ public final class RootlessEnvironment {
         } catch (Throwable ignored) {
         }
         return out;
+    }
+
+    /**
+     * Ask NPatch's read-only public config provider which modules are enabled for
+     * the target. This is diagnostic only and never changes NPatch configuration.
+     */
+    private static boolean isModuleConfigured(Context context, String targetPackage, String modulePackage) {
+        Cursor cursor = null;
+        try {
+            Uri uri = new Uri.Builder()
+                    .scheme("content")
+                    .authority(NPATCH_CONFIG_AUTHORITY)
+                    .appendQueryParameter("package", targetPackage)
+                    .build();
+            cursor = context.getContentResolver().query(uri, null, null, null, null);
+            if (cursor == null) return false;
+            int column = cursor.getColumnIndex("packageName");
+            if (column < 0) return false;
+            while (cursor.moveToNext()) {
+                if (modulePackage.equals(cursor.getString(column))) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            if (cursor != null) {
+                try {
+                    cursor.close();
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return false;
     }
 
     private static void inspectNpatchAssets(Snapshot out, String sourceDir) {
@@ -176,6 +215,8 @@ public final class RootlessEnvironment {
         public boolean betterHeyboxModuleVisible;
         public int sigBypassLevel = -1;
         public boolean npatchRemoteProvider;
+        public boolean npatchConfigProvider;
+        public boolean npatchModuleConfigured;
         public boolean shizukuPlusInstalled;
         public boolean shizukuCompatInstalled;
         public boolean rootAvailable;
