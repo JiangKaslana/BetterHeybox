@@ -32,9 +32,9 @@ import io.github.libxposed.service.IXposedService;
  * Minimal NPatch Remote API client used by BetterHeybox.
  *
  * <p>Adapted from 7723mod/NPatch-Remote-API (Apache-2.0). Only the authenticated
- * API-102 RemotePreferences surface needed by this project is retained. This
- * variant avoids newer java.lang APIs so BetterHeybox's Android 8+ minSdk stays
- * valid.</p>
+ * API-102 RemotePreferences/service surface needed by this project is retained.
+ * This variant avoids newer java.lang APIs so BetterHeybox's Android 8+ minSdk
+ * stays valid.</p>
  */
 public final class NPatchRemoteClient {
     public static final String DEFAULT_AUTHORITY = "top.nkbe.npatch.remote";
@@ -90,6 +90,11 @@ public final class NPatchRemoteClient {
         RemotePreferences created = new RemotePreferences(service, group);
         RemotePreferences previous = preferences.putIfAbsent(group, created);
         return previous != null ? previous : created;
+    }
+
+    /** Raw authenticated API-102 service, used only for runtime diagnostics. */
+    public IXposedService getService() {
+        return service;
     }
 
     private static IBinder requestBinder(Context context, String modulePackageName, String authority) {
