@@ -1,5 +1,5 @@
 package com.better.heybox;
-import android.util.Log;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -12,6 +12,7 @@ public final class ConfigBackup {
     private static final String KEY_EXPORTED_AT = "exportedAt";
     private static final String KEY_BOOLEANS = "booleans";
     private static final String KEY_STRINGS = "strings";
+
     private static final String[] BOOLEAN_KEYS = {
             App.KEY_OPEN_SCREEN,
             App.KEY_FEED_AD,
@@ -32,11 +33,13 @@ public final class ConfigBackup {
             App.KEY_DAILY_TASK_ENABLED,
             App.KEY_FAKE_NOTIFICATION,
             App.KEY_LOG,
+            App.KEY_WEBVIEW_DEVTOOLS,
             App.KEY_LIQUID_GLASS,
             App.KEY_GLASS_IMMERSIVE,
             App.KEY_GLASS_ADAPTIVE,
             App.KEY_GLASS_FIT_TABS,
     };
+
     private static final String[] STRING_KEYS = {
             App.KEY_DAILY_TASK_PICTURE,
             App.KEY_DAILY_TASK_NORMAL,
@@ -50,28 +53,36 @@ public final class ConfigBackup {
             App.KEY_GLASS_BAR_OFFSET,
             App.KEY_GLASS_DARK_PRESET,
             App.KEY_GLASS_LIGHT_PRESET,
+            App.KEY_WEBVIEW_ENTRY_URL,
     };
+
     private static final String[] RESTART_KEYS = {
             App.KEY_HIDE_TAB_HOME,
             App.KEY_HIDE_TAB_HOT,
             App.KEY_HIDE_TAB_GAME,
             App.KEY_HIDE_ADD,
+            App.KEY_LIQUID_GLASS,
     };
 
     private ConfigBackup() {
     }
+
     public interface BooleanReader {
         boolean get(String key, boolean def);
     }
+
     public interface StringReader {
         String get(String key, String def);
     }
+
     public interface BooleanWriter {
         void write(String key, boolean value);
     }
+
     public interface StringWriter {
         void write(String key, String value);
     }
+
     public static String buildJson(BooleanReader booleanReader, StringReader stringReader) {
         try {
             JSONObject booleans = new JSONObject();
@@ -95,6 +106,7 @@ public final class ConfigBackup {
             return null;
         }
     }
+
     public static ApplyResult applyJson(String json, BooleanWriter booleanWriter, StringWriter stringWriter) {
         try {
             JSONObject root = new JSONObject(json);
@@ -142,6 +154,7 @@ public final class ConfigBackup {
         }
         return false;
     }
+
     private static boolean defaultFor(String key) {
         if (App.KEY_OPEN_SCREEN.equals(key)
                 || App.KEY_FEED_AD.equals(key)
@@ -151,11 +164,13 @@ public final class ConfigBackup {
                 || App.KEY_COPY_POST.equals(key)
                 || App.KEY_SYSTEM_SHARE.equals(key)
                 || App.KEY_LIQUID_GLASS.equals(key)
+                || App.KEY_GLASS_IMMERSIVE.equals(key)
                 || App.KEY_GLASS_ADAPTIVE.equals(key)) {
             return true;
         }
         return false;
     }
+
     public static final class ApplyResult {
         public final int applied;
         public final boolean restartRequired;
