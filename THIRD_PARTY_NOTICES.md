@@ -14,6 +14,13 @@ BetterHeybox uses or interoperates with the following open-source projects.
 - License: Apache License 2.0
 - Role: bytecode feature analysis used to relocate selected obfuscated Heybox classes/methods.
 
+## Liquid Glass
+
+- Projects: `QWEA0/Liquid-Glass-Android`, `QmDeve/AndroidLiquidGlassView`, and the upstream BetterHeybox port based on `sjtt2/HeyBox-LiquidGlass`
+- Maven artifact: `com.github.QWEA0:liquidglass:90f4ea28e3`
+- License: MIT for the referenced/rendering projects as documented by upstream.
+- Role: optional liquid-glass bottom navigation rendering and AGSL/CPU fallback implementation.
+
 ## Shizuku API
 
 - Project: `RikkaApps/Shizuku`
@@ -39,4 +46,4 @@ BetterHeybox uses only the standard Shizuku client API. Shizuku+ compatibility i
 
 ## License URLs
 
-The authoritative license texts remain available in the corresponding upstream repositories. Apache-2.0 licensed code modified in this repository retains attribution in source comments and in this notice.
+The authoritative license texts remain available in the corresponding upstream repositories. Apache-2.0 and MIT licensed code modified or vendored in this repository retains attribution in source comments and in this notice.

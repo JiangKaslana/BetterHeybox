@@ -46,7 +46,12 @@ public class PreferenceReceiver extends BroadcastReceiver {
             App.KEY_VIDEO_DOWNLOAD,
             App.KEY_VIDEO_TO_MP4,
             App.KEY_PURIFY_SHARE_LINK,
-            App.KEY_LOG
+            App.KEY_LOG,
+            App.KEY_WEBVIEW_DEVTOOLS,
+            App.KEY_LIQUID_GLASS,
+            App.KEY_GLASS_IMMERSIVE,
+            App.KEY_GLASS_ADAPTIVE,
+            App.KEY_GLASS_FIT_TABS
     ));
 
     private static final Set<String> ALLOWED_STRING_KEYS = new HashSet<>(Arrays.asList(
@@ -55,7 +60,16 @@ public class PreferenceReceiver extends BroadcastReceiver {
             App.KEY_DAILY_TASK_CHANNEL,
             App.KEY_DAILY_TASK_DONE_DATE,
             App.KEY_SHARE_CHANNEL,
-            App.KEY_VIDEO_DIR
+            App.KEY_VIDEO_DIR,
+            App.KEY_GLASS_DARK_COLOR,
+            App.KEY_GLASS_DARK_ALPHA,
+            App.KEY_GLASS_LIGHT_COLOR,
+            App.KEY_GLASS_LIGHT_ALPHA,
+            App.KEY_GLASS_BAR_HEIGHT,
+            App.KEY_GLASS_BAR_OFFSET,
+            App.KEY_GLASS_DARK_PRESET,
+            App.KEY_GLASS_LIGHT_PRESET,
+            App.KEY_WEBVIEW_ENTRY_URL
     ));
 
     @Override

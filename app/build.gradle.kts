@@ -69,6 +69,9 @@ dependencies {
     implementation(libs.libxposed.service)
     implementation(libs.dexkit)
 
+    // Upstream 0.6 liquid-glass renderer.
+    implementation("com.github.QWEA0:liquidglass:90f4ea28e3")
+
     // Rootless manager privilege bridge. Shizuku+ remains optional at runtime;
     // its Compat Hub exposes the standard Shizuku API package to this client.
     implementation(libs.shizuku.api)

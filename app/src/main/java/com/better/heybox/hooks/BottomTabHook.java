@@ -3,12 +3,14 @@ package com.better.heybox.hooks;
 import android.app.Activity;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 import com.better.heybox.App;
 import com.better.heybox.MainModule;
+import com.better.heybox.liquidglass.LiquidGlassInstaller;
 
 /**
  * 底部导航栏屏蔽：按开关隐藏首页 / 热点 / 游戏库 / 加号（需重启小黑盒生效）。
@@ -143,9 +145,81 @@ public final class BottomTabHook {
                 // 同时去掉「推荐」占位（rb_3 默认 INVISIBLE 占位），让剩余 tab 完全等分
                 hideTabField(binding, "l", "推荐占位");
             }
+            normalizeVisibleTabs(binding);
+            ViewGroup group = findTabGroup(binding);
+            if (group != null) {
+                group.addOnLayoutChangeListener((v, left, top, right, bottom,
+                        oldLeft, oldTop, oldRight, oldBottom) -> normalizeVisibleTabs(binding));
+                group.postDelayed(() -> normalizeVisibleTabs(binding), 100);
+                group.postDelayed(() -> normalizeVisibleTabs(binding), 500);
+                group.postDelayed(() -> normalizeVisibleTabs(binding), 1500);
+                group.postDelayed(() -> normalizeVisibleTabs(binding), 3000);
+            }
+            ensureVisibleTabSelected(binding);
+            LiquidGlassInstaller.syncTabVisibility();
         } catch (Throwable t) {
             module.logd(Log.WARN, module.TAG, "底部导航栏设置应用失败: " + t);
         }
+    }
+
+    private void normalizeVisibleTabs(Object binding) {
+        try {
+            Field groupField = binding.getClass().getDeclaredField("o");
+            groupField.setAccessible(true);
+            Object value = groupField.get(binding);
+            if (!(value instanceof android.widget.RadioGroup)) return;
+            android.widget.RadioGroup group = (android.widget.RadioGroup) value;
+            int visible = 0;
+            for (int i = 0; i < group.getChildCount(); i++) if (group.getChildAt(i).getVisibility() == View.VISIBLE) visible++;
+            if (visible == 0) return;
+            float weight = 1f / visible;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                if (child.getVisibility() != View.VISIBLE) continue;
+                android.widget.LinearLayout.LayoutParams lp = child.getLayoutParams() instanceof android.widget.LinearLayout.LayoutParams
+                        ? (android.widget.LinearLayout.LayoutParams) child.getLayoutParams() : null;
+                if (lp != null) { lp.width = 0; lp.weight = weight; child.setLayoutParams(lp); }
+            }
+            group.requestLayout();
+        } catch (Throwable ignored) { }
+    }
+
+    private void ensureVisibleTabSelected(Object binding) {
+        try {
+            Field groupField = binding.getClass().getDeclaredField("o");
+            groupField.setAccessible(true);
+            Object value = groupField.get(binding);
+            if (!(value instanceof android.widget.RadioGroup)) return;
+            android.widget.RadioGroup group = (android.widget.RadioGroup) value;
+            int checkedId = group.getCheckedRadioButtonId();
+            if (checkedId != -1) {
+                View checked = group.findViewById(checkedId);
+                if (checked != null && checked.getVisibility() == View.VISIBLE) {
+                    return;
+                }
+            }
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                if (child instanceof android.widget.RadioButton
+                        && child.getVisibility() == View.VISIBLE) {
+                    int id = child.getId();
+                    if (id != -1 && id != checkedId) {
+                        group.check(id);
+                        module.logd(Log.INFO, module.TAG, "选中 tab 已隐藏，切换到可见 tab id=" + id);
+                    }
+                    break;
+                }
+            }
+        } catch (Throwable t) {
+            module.logd(Log.WARN, module.TAG, "纠正底栏选中项失败: " + t);
+        }
+    }
+
+    private ViewGroup findTabGroup(Object binding) {
+        try {
+            Field f = binding.getClass().getDeclaredField("o"); f.setAccessible(true);
+            Object value = f.get(binding); return value instanceof ViewGroup ? (ViewGroup) value : null;
+        } catch (Throwable ignored) { return null; }
     }
 
     private Object findViewBinding(Object activity) {

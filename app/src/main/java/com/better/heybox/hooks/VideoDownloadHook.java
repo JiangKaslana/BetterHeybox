@@ -56,6 +56,20 @@ import com.better.heybox.VideoDownloadManager;
  */
 public final class VideoDownloadHook {
 
+    /** 液态玻璃调节面板打开时暂停窗口级 FAB，避免它覆盖面板内容。 */
+    private static volatile boolean glassSettingsVisible;
+
+    public static void setGlassSettingsVisible(boolean visible) {
+        glassSettingsVisible = visible;
+        synchronized (EntryController.CONTROLLERS) {
+            for (EntryController controller : EntryController.CONTROLLERS.values()) {
+                if (controller != null) {
+                    controller.sync();
+                }
+            }
+        }
+    }
+
     private final MainModule module;
     private volatile boolean installed;
 
@@ -285,6 +299,13 @@ public final class VideoDownloadHook {
 
         private void syncInternal() {
             ensureEntry();
+            if (glassSettingsVisible) {
+                active = null;
+                if (entry != null && entry.getVisibility() != View.GONE) {
+                    entry.setVisibility(View.GONE);
+                }
+                return;
+            }
             Candidate chosen = null;
             View chosenAnchor = null;
             int decorH = decor.getHeight();

@@ -58,6 +58,23 @@ public class App extends Application implements XposedServiceHelper.OnServiceLis
     public static final String KEY_VIDEO_TO_MP4 = "video_download_to_mp4";
     public static final String KEY_PURIFY_SHARE_LINK = "purify_share_link";
     public static final String KEY_LOG = "log";
+
+    /** Upstream 0.6: WebView DevTools and liquid-glass settings. */
+    public static final String KEY_WEBVIEW_DEVTOOLS = "webview_devtools";
+    public static final String KEY_LIQUID_GLASS = "liquid_glass";
+    public static final String KEY_GLASS_IMMERSIVE = "glass_immersive";
+    public static final String KEY_GLASS_ADAPTIVE = "glass_adaptive";
+    public static final String KEY_GLASS_DARK_COLOR = "glass_dark_color";
+    public static final String KEY_GLASS_DARK_ALPHA = "glass_dark_alpha";
+    public static final String KEY_GLASS_LIGHT_COLOR = "glass_light_color";
+    public static final String KEY_GLASS_LIGHT_ALPHA = "glass_light_alpha";
+    public static final String KEY_GLASS_BAR_HEIGHT = "glass_bar_height";
+    public static final String KEY_GLASS_BAR_OFFSET = "glass_bar_offset";
+    public static final String KEY_GLASS_FIT_TABS = "glass_fit_tabs";
+    public static final String KEY_GLASS_DARK_PRESET = "glass_dark_preset";
+    public static final String KEY_GLASS_LIGHT_PRESET = "glass_light_preset";
+    public static final String KEY_WEBVIEW_ENTRY_URL = "webview_entry_url";
+
     public static final String KEY_RUNTIME_STATUS = "runtime_status";
 
     private static volatile XposedService sService;
