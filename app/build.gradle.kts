@@ -65,7 +65,7 @@ android {
 
 dependencies {
     compileOnly(libs.libxposed.api)
-    implementation(libs.libxposed.interface)
+    implementation("io.github.libxposed:interface:102.0.0")
     implementation(libs.libxposed.service)
     implementation(libs.dexkit)
 
