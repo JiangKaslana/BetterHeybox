@@ -168,6 +168,8 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
         addToggle(root, "视频下载", "显示视频下载入口", App.KEY_VIDEO_DOWNLOAD, true);
         addToggle(root, "视频自动转 MP4", null, App.KEY_VIDEO_TO_MP4, true);
         addToggle(root, "净化分享链接", null, App.KEY_PURIFY_SHARE_LINK, true);
+        addToggle(root, "网页 DevTools", "开启小黑盒 WebView Chrome 远程调试", App.KEY_WEBVIEW_DEVTOOLS, false);
+        addToggle(root, "液态玻璃底栏", "上游 0.6 功能；修改后建议重启小黑盒", App.KEY_LIQUID_GLASS, false);
         addToggle(root, "自动每日分享任务", "可直接在下方配置三个链接和分享渠道",
                 App.KEY_DAILY_TASK_ENABLED, false);
         addButton(root, "配置每日任务链接与渠道", v -> showDailyTaskConfig());
@@ -183,7 +185,8 @@ public final class MainActivity extends Activity implements App.OnServiceBoundLi
 
         TextView note = new TextView(this);
         note.setText("说明：LSPosed / NPatch 负责进程内 Hook；Shizuku+ 只负责无 Root 下的进程控制。"
-                + " 独立管理器和小黑盒内嵌设置采用时间戳同步，最后一次修改的值生效。");
+                + " 独立管理器和小黑盒内嵌设置采用时间戳同步，最后一次修改的值生效。"
+                + " 液态玻璃的颜色、透明度、高度等高级参数仍在小黑盒内嵌设置中调整。");
         note.setTextSize(13);
         note.setAlpha(0.65f);
         note.setPadding(0, dp(22), 0, 0);
