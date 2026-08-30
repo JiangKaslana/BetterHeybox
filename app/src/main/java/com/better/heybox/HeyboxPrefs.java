@@ -3,14 +3,16 @@ package com.better.heybox;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import com.better.heybox.liquidglass.LiquidGlassHookBridge;
+
 /**
  * Settings stored directly inside the injected Heybox process.
  *
- * <p>Each write also stores a timestamp. {@link MainModule} compares this local
- * timestamp with the RemotePreferences timestamp written by the standalone
- * manager, so whichever UI changed a setting most recently wins. Existing
- * installations without timestamps keep the old behaviour (Heybox-local value
- * wins on a tie).</p>
+ * <p>Each local write stores a timestamp. Reads also consult the module's
+ * RemotePreferences when the libxposed entry is available, so upstream code
+ * that reads HeyboxPrefs directly (for example the liquid-glass renderer) gets
+ * the same newest-write-wins semantics as {@link MainModule}. On equal/legacy
+ * timestamps the Heybox-local value keeps historical precedence.</p>
  */
 public final class HeyboxPrefs {
 
@@ -41,20 +43,58 @@ public final class HeyboxPrefs {
     }
 
     public static boolean getBoolean(String key, boolean defaultValue) {
-        SharedPreferences prefs = get();
-        return prefs != null ? prefs.getBoolean(key, defaultValue) : defaultValue;
+        SharedPreferences local = get();
+        boolean localExists = local != null && local.contains(key);
+        boolean localValue = localExists ? local.getBoolean(key, defaultValue) : defaultValue;
+        long localTs = localExists ? local.getLong(App.timestampKey(key), 0L) : -1L;
+
+        try {
+            SharedPreferences remote = getRemotePreferences();
+            boolean remoteExists = remote != null && remote.contains(key);
+            if (!remoteExists) {
+                return localExists ? localValue : defaultValue;
+            }
+            boolean remoteValue = remote.getBoolean(key, defaultValue);
+            long remoteTs = remote.getLong(App.timestampKey(key), 0L);
+            if (!localExists) {
+                return remoteValue;
+            }
+            return remoteTs > localTs ? remoteValue : localValue;
+        } catch (Throwable ignored) {
+            return localExists ? localValue : defaultValue;
+        }
     }
 
     public static String getString(String key, String defaultValue) {
-        SharedPreferences prefs = get();
-        return prefs != null ? prefs.getString(key, defaultValue) : defaultValue;
+        SharedPreferences local = get();
+        boolean localExists = local != null && local.contains(key);
+        String localValue = localExists ? local.getString(key, defaultValue) : defaultValue;
+        long localTs = localExists ? local.getLong(App.timestampKey(key), 0L) : -1L;
+
+        try {
+            SharedPreferences remote = getRemotePreferences();
+            boolean remoteExists = remote != null && remote.contains(key);
+            if (!remoteExists) {
+                return localExists ? localValue : defaultValue;
+            }
+            String remoteValue = remote.getString(key, defaultValue);
+            long remoteTs = remote.getLong(App.timestampKey(key), 0L);
+            if (!localExists) {
+                return remoteValue;
+            }
+            return remoteTs > localTs ? remoteValue : localValue;
+        } catch (Throwable ignored) {
+            return localExists ? localValue : defaultValue;
+        }
     }
 
+    /** Local timestamp only. MainModule compares it against its remote snapshot. */
     public static long getTimestamp(String key) {
         SharedPreferences prefs = get();
         return prefs != null ? prefs.getLong(App.timestampKey(key), 0L) : 0L;
     }
 
+    /** Local-presence check kept intentionally local for legacy precedence logic. */
     public static boolean contains(String key) {
         SharedPreferences prefs = get();
         return prefs != null && prefs.contains(key);
@@ -80,6 +120,20 @@ public final class HeyboxPrefs {
                 .putString(key, value)
                 .putLong(App.timestampKey(key), System.currentTimeMillis())
                 .commit();
+    }
+
+    /**
+     * Access the framework RemotePreferences through the already-attached module
+     * entry. This avoids depending on the standalone App process, which is not
+     * present inside the injected Heybox process.
+     */
+    private static SharedPreferences getRemotePreferences() {
+        try {
+            MainModule module = LiquidGlassHookBridge.module();
+            return module != null ? module.getRemotePreferences(App.PREFS_GROUP) : null;
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     private static Context resolveAppContext() {
